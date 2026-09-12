@@ -1,0 +1,17 @@
+__pycache__/
+.pytest_cache/
+*.pyc
+*.pyo
+in-memoria.db
+test/
+in-memoria-vectors.db/
+todo.md
+.opencode/
+!.opencode/skills/
+!.opencode/skills/**
+.memdb/
+examples/*.png
+.vscode/
+.venv/
+.codebase-memory/
+.mimocode/

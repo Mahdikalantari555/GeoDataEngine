@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "data-engine"
+version = "0.1.0"
+description = "Remote-sensing data engine: Landsat (METRIC ETa) and Sentinel-2 processing"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.10"
+authors = [{name = "GeoFoundation"}]
+keywords = ["evapotranspiration", "landsat", "sentinel", "remote-sensing", "energy-balance"]
+
+dependencies = [
+    "numpy>=1.24",
+    "scipy>=1.10",
+    "pandas>=2.0",
+    "xarray>=2023.1",
+    "rasterio>=1.3",
+    "rioxarray>=0.14",
+    "geopandas>=0.14",
+    "click>=8.1",
+    "pyyaml>=6.0",
+    "loguru>=0.7",
+    "tqdm>=4.65",
+    "requests>=2.28",
+]
+
+[project.optional-dependencies]
+rs = [
+    "matplotlib>=3.7",
+    "seaborn>=0.12",
+    "cartopy>=0.22",
+    "sentinelsat>=1.1",
+    "scikit-learn>=1.3",
+]
+dev = ["pytest>=8.0", "pytest-cov>=5.0"]
+
+[project.scripts]
+data-engine = "data_engine.cli.interface:cli"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[dependency-groups]
+dev = ["pytest>=8.0", "pytest-cov>=5.0"]

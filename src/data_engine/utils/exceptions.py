@@ -13,17 +13,17 @@ class METRICError(Exception):
     All custom METRIC exceptions inherit from this class.
     Provides context information about the error location and details.
     """
-    
+
     def __init__(self, message: str, details: dict = None, *args):
         super().__init__(message, *args)
         self.message = message
         self.details = details or {}
-    
+
     def __str__(self):
         if self.details:
             return f"{self.message} | Details: {self.details}"
         return self.message
-    
+
     def add_detail(self, key: str, value) -> None:
         """
         Add detail information to the exception.
@@ -45,7 +45,7 @@ class DataInputError(METRICError):
     - Data validation failures
     - Coordinate reference system mismatches
     """
-    
+
     def __init__(self, message: str, input_type: str = None, file_path: str = None, *args):
         details = {}
         if input_type:
@@ -59,7 +59,7 @@ class ScenePathError(DataInputError):
     """
     Exception raised for invalid Landsat scene paths.
     """
-    
+
     def __init__(self, message: str, scene_path: str = None, *args):
         super().__init__(message, input_type="landsat_scene", file_path=scene_path, *args)
 
@@ -68,7 +68,7 @@ class WeatherDataError(DataInputError):
     """
     Exception raised for invalid weather data.
     """
-    
+
     def __init__(self, message: str, missing_columns: list = None, *args):
         details = {}
         if missing_columns:
@@ -85,7 +85,7 @@ class CalibrationError(METRICError):
     - Calibration coefficient computation errors
     - dT calibration failures
     """
-    
+
     def __init__(self, message: str, stage: str = None, anchor_pixel: str = None, *args):
         details = {}
         if stage:
@@ -99,7 +99,7 @@ class AnchorPixelError(CalibrationError):
     """
     Exception raised for anchor pixel issues.
     """
-    
+
     def __init__(self, message: str, pixel_type: str = None, coordinates: tuple = None, *args):
         details = {}
         if pixel_type:
@@ -113,7 +113,7 @@ class DTCalibrationError(CalibrationError):
     """
     Exception raised for dT calibration failures.
     """
-    
+
     def __init__(self, message: str, Ts_cold: float = None, Ts_hot: float = None, *args):
         details = {}
         if Ts_cold is not None:
@@ -132,7 +132,7 @@ class ComputationError(METRICError):
     - Invalid intermediate calculations
     - Array dimension mismatches
     """
-    
+
     def __init__(self, message: str, computation_step: str = None, *args):
         details = {}
         if computation_step:
@@ -144,7 +144,7 @@ class RadiationBalanceError(ComputationError):
     """
     Exception raised for radiation balance calculation errors.
     """
-    
+
     def __init__(self, message: str, component: str = None, *args):
         details = {}
         if component:
@@ -156,7 +156,7 @@ class EnergyBalanceError(ComputationError):
     """
     Exception raised for energy balance calculation errors.
     """
-    
+
     def __init__(self, message: str, component: str = None, *args):
         details = {}
         if component:
@@ -173,7 +173,7 @@ class OutputError(METRICError):
     - Invalid output format
     - Disk space issues
     """
-    
+
     def __init__(self, message: str, output_path: str = None, output_type: str = None, *args):
         details = {}
         if output_path:
@@ -187,7 +187,7 @@ class GeoTIFFWriteError(OutputError):
     """
     Exception raised for GeoTIFF write failures.
     """
-    
+
     def __init__(self, message: str, file_path: str = None, *args):
         super().__init__(message, output_type="geotiff", file_path=file_path, *args)
 
@@ -196,7 +196,7 @@ class VisualizationError(OutputError):
     """
     Exception raised for visualization generation failures.
     """
-    
+
     def __init__(self, message: str, plot_type: str = None, *args):
         details = {}
         if plot_type:
@@ -213,7 +213,7 @@ class ConfigurationError(METRICError):
     - Invalid configuration values
     - Environment variable issues
     """
-    
+
     def __init__(self, message: str, config_param: str = None, *args):
         details = {}
         if config_param:
@@ -230,7 +230,7 @@ class PipelineError(METRICError):
     - Step dependency issues
     - Resource allocation problems
     """
-    
+
     def __init__(self, message: str, pipeline_stage: str = None, step: str = None, *args):
         details = {}
         if pipeline_stage:
@@ -255,7 +255,7 @@ def handle_exception(func):
             pass
     """
     from functools import wraps
-    
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         try:
@@ -300,11 +300,11 @@ def create_error_context(error: Exception, context: dict) -> dict:
         "error_type": type(error).__name__,
         "error_message": str(error),
     }
-    
+
     if hasattr(error, 'details'):
         context_data["error_details"] = error.details
-    
+
     if context:
         context_data["additional_context"] = context
-    
+
     return context_data

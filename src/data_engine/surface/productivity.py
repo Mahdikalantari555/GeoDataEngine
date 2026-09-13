@@ -1,8 +1,8 @@
 """Productivity spectral indices: NIRv, GCI."""
 
 import logging
+
 import numpy as np
-import xarray as xr
 
 from ..core.datacube import DataCube
 

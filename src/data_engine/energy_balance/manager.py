@@ -17,21 +17,21 @@ Example usage:
     LE = results['LE']
 """
 
-import numpy as np
 import logging
-from typing import Dict, Optional
 from dataclasses import dataclass
 
+import numpy as np
+
 from data_engine.core.datacube import DataCube
-from data_engine.energy_balance.soil_heat_flux import (
-    SoilHeatFlux, SoilHeatFluxConfig
+from data_engine.energy_balance.latent_heat_flux import (
+    LatentHeatFlux,
+    LatentHeatFluxConfig,
 )
 from data_engine.energy_balance.sensible_heat_flux import (
-    SensibleHeatFlux, SensibleHeatFluxConfig
+    SensibleHeatFlux,
+    SensibleHeatFluxConfig,
 )
-from data_engine.energy_balance.latent_heat_flux import (
-    LatentHeatFlux, LatentHeatFluxConfig
-)
+from data_engine.energy_balance.soil_heat_flux import SoilHeatFlux, SoilHeatFluxConfig
 
 
 @dataclass
@@ -40,21 +40,21 @@ class EnergyBalanceConfig:
     # G configuration
     g_method: str = 'automatic'
     g_ndvi_threshold: float = 0.2
-    
+
     # H configuration
     h_z_wind: float = 10.0
     h_z_temp: float = 2.0
     h_use_stability: bool = True
-    
+
     # LE configuration
     le_allow_negative: bool = False
     le_min_ef: float = 0.0
     le_max_ef: float = 2.0
-    
+
     # Anchor pixel calibration (to be set during METRIC calibration)
-    dt_a: Optional[float] = None
-    dt_b: Optional[float] = None
-    
+    dt_a: float | None = None
+    dt_b: float | None = None
+
     # Output keys
     output_keys: tuple = ('G', 'H', 'LE', 'rah', 'EF', 'ET_inst', 'dT')
 
@@ -73,8 +73,8 @@ class EnergyBalanceManager:
         >>> print(f"H: {results['H'].mean():.2f} W/m²")
         >>> print(f"LE: {results['LE'].mean():.2f} W/m²")
     """
-    
-    def __init__(self, config: Optional[EnergyBalanceConfig] = None):
+
+    def __init__(self, config: EnergyBalanceConfig | None = None):
         """
         Initialize EnergyBalanceManager.
         
@@ -82,10 +82,10 @@ class EnergyBalanceManager:
             config: Optional configuration parameters. Uses defaults if not provided.
         """
         self.config = config or EnergyBalanceConfig()
-        
+
         # Initialize component calculators
         self._init_components()
-    
+
     def _init_components(self):
         """Initialize the energy balance component calculators."""
         # Soil heat flux
@@ -94,7 +94,7 @@ class EnergyBalanceManager:
             ndvi_threshold=self.config.g_ndvi_threshold
         )
         self.g_calculator = SoilHeatFlux(g_config)
-        
+
         # Sensible heat flux
         h_config = SensibleHeatFluxConfig(
             z_wind=self.config.h_z_wind,
@@ -104,7 +104,7 @@ class EnergyBalanceManager:
             dt_b=self.config.dt_b
         )
         self.h_calculator = SensibleHeatFlux(h_config)
-        
+
         # Latent heat flux
         le_config = LatentHeatFluxConfig(
             allow_negative_le=self.config.le_allow_negative,
@@ -112,7 +112,7 @@ class EnergyBalanceManager:
             max_ef=self.config.le_max_ef
         )
         self.le_calculator = LatentHeatFlux(le_config)
-    
+
     def calculate_from_arrays(
         self,
         rn: np.ndarray,
@@ -121,11 +121,11 @@ class EnergyBalanceManager:
         u: np.ndarray,
         z0m: np.ndarray,
         ndvi: np.ndarray,
-        albedo: Optional[np.ndarray] = None,
-        pressure_pa: Optional[np.ndarray] = None,
-        lai: Optional[np.ndarray] = None,
-        g_flux: Optional[np.ndarray] = None  # Optional pre-computed G
-    ) -> Dict[str, np.ndarray]:
+        albedo: np.ndarray | None = None,
+        pressure_pa: np.ndarray | None = None,
+        lai: np.ndarray | None = None,
+        g_flux: np.ndarray | None = None  # Optional pre-computed G
+    ) -> dict[str, np.ndarray]:
         """
         Calculate all energy balance components from arrays.
         
@@ -159,13 +159,13 @@ class EnergyBalanceManager:
             # Calculate G as part of energy balance
             g_result = self.g_calculator.calculate(rn, ndvi, ts_kelvin, ta_kelvin)
             G = g_result['G']
-        
+
         # DEBUG: Log G and Rn values
         logger = logging.getLogger(__name__)
         logger.info(f"[ENERGY BALANCE DEBUG] Rn: min={np.nanmin(rn):.2f}, max={np.nanmax(rn):.2f}, mean={np.nanmean(rn):.2f}")
         logger.info(f"[ENERGY BALANCE DEBUG] G: min={np.nanmin(G):.2f}, max={np.nanmax(G):.2f}, mean={np.nanmean(G):.2f}")
         logger.info(f"[ENERGY BALANCE DEBUG] G/Rn ratio: min={np.nanmin(g_result.get('G_Rn_ratio', 0)):.4f}, max={np.nanmax(g_result.get('G_Rn_ratio', 0)):.4f}")
-        
+
         # Calculate sensible heat flux (H)
         logger.info(f"[ENERGY BALANCE DEBUG] Calibration coefficients: dt_a={self.config.dt_a}, dt_b={self.config.dt_b}")
         h_result = self.h_calculator.calculate(
@@ -182,40 +182,40 @@ class EnergyBalanceManager:
         )
         H = h_result['H']
         rah = h_result['rah']
-        
+
         # DEBUG: Log H values
         logger.info(f"[ENERGY BALANCE DEBUG] H: min={np.nanmin(H):.2f}, max={np.nanmax(H):.2f}, mean={np.nanmean(H):.2f}")
         logger.info(f"[ENERGY BALANCE DEBUG] rah: min={np.nanmin(rah):.2f}, max={np.nanmax(rah):.2f}, mean={np.nanmean(rah):.2f}")
-        
+
         # Calculate available energy (Rn - G)
         available_energy = rn - G
         logger.info(f"[ENERGY BALANCE DEBUG] Available Energy (Rn-G): min={np.nanmin(available_energy):.2f}, max={np.nanmax(available_energy):.2f}, mean={np.nanmean(available_energy):.2f}")
-        
+
         # Calculate latent heat flux (LE)
         le_result = self.le_calculator.calculate(rn, G, H, ts_kelvin)
         LE = le_result['LE']
         EF = le_result['EF']
         ET_inst = le_result['ET_inst']
-        
+
         # DEBUG: Log LE and EF values
         logger.info(f"[ENERGY BALANCE DEBUG] LE: min={np.nanmin(LE):.2f}, max={np.nanmax(LE):.2f}, mean={np.nanmean(LE):.2f}")
         logger.info(f"[ENERGY BALANCE DEBUG] EF: min={np.nanmin(EF):.4f}, max={np.nanmax(EF):.4f}, mean={np.nanmean(EF):.4f}")
         logger.info(f"[ENERGY BALANCE DEBUG] ET_inst: min={np.nanmin(ET_inst):.4f}, max={np.nanmax(ET_inst):.4f}, mean={np.nanmean(ET_inst):.4f}")
-        
+
         # Energy balance check: Rn - G - H - LE should be ~0
         residual = rn - G - H - LE
         logger.info(f"[ENERGY BALANCE DEBUG] Residual (Rn-G-H-LE): min={np.nanmin(residual):.2f}, max={np.nanmax(residual):.2f}, mean={np.nanmean(residual):.2f}")
-        
+
         # Check for EF issues
         if np.nanmean(EF) > 0.95:
             logger.warning("[ENERGY BALANCE WARNING] EF mean is very high (>0.95). Check H calculation - may be too low.")
             logger.warning(f"[ENERGY BALANCE WARNING] H mean: {np.nanmean(H):.2f}, Available Energy mean: {np.nanmean(available_energy):.2f}")
-            logger.warning(f"[ENERGY BALANCE WARNING] LE should be (Rn-G-H), but if H is too small, LE approaches (Rn-G)")
-        
+            logger.warning("[ENERGY BALANCE WARNING] LE should be (Rn-G-H), but if H is too small, LE approaches (Rn-G)")
+
         if np.nanmin(EF) > 0.9:
             logger.warning("[ENERGY BALANCE WARNING] EF minimum is very high (>0.9). This is unrealistic for most surfaces.")
             logger.warning("[ENERGY BALANCE WARNING] Check calibration coefficients and H calculation.")
-        
+
         return {
             'G': G,
             'H': H,
@@ -228,8 +228,8 @@ class EnergyBalanceManager:
             'G_Rn_ratio': g_result.get('G_Rn_ratio'),
             'available_energy': le_result.get('available_energy')
         }
-    
-    def calculate(self, cube: DataCube) -> Dict[str, np.ndarray]:
+
+    def calculate(self, cube: DataCube) -> dict[str, np.ndarray]:
         """
         Calculate all energy balance components from DataCube.
         
@@ -262,12 +262,12 @@ class EnergyBalanceManager:
             ndvi = cube.get('ndvi')
         except KeyError as e:
             raise ValueError(f"Missing required data in cube: {e}")
-        
+
         # Get optional arrays
         pressure_pa = cube.get('surface_pressure') if 'surface_pressure' in cube.bands() else None
         lai = cube.get('lai') if 'lai' in cube.bands() else None
         albedo = cube.get('albedo') if 'albedo' in cube.bands() else None
-        
+
         # Check if G is already computed (for METRIC pipeline reordering)
         g_flux = cube.get('G')
         if g_flux is not None:
@@ -297,21 +297,21 @@ class EnergyBalanceManager:
                 pressure_pa=pressure_pa,
                 lai=lai
             )
-        
+
         # Add results to cube
         for key in self.config.output_keys:
             if key in results:
                 cube.add(key, results[key])
-        
+
         return results
-    
+
     def calculate_quality_report(
         self,
         rn: np.ndarray,
         G: np.ndarray,
         H: np.ndarray,
         LE: np.ndarray
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Generate quality report for energy balance.
         
@@ -331,21 +331,21 @@ class EnergyBalanceManager:
             residual / np.abs(available_energy),
             0.0
         )
-        
+
         # Energy balance closure
         closure = np.where(
             np.abs(available_energy) > 1.0,
             (H + LE) / np.abs(available_energy),
             1.0
         )
-        
+
         return {
             'residual': residual,
             'relative_residual': rel_residual,
             'energy_balance_closure': closure,
             'available_energy': available_energy
         }
-    
+
     def set_anchor_pixel_calibration(self, a: float, b: float):
         """
         Set anchor pixel calibration coefficients for dT.
@@ -361,11 +361,11 @@ class EnergyBalanceManager:
         """
         self.config.dt_a = a
         self.config.dt_b = b
-        
+
         # Update H calculator
         self.h_calculator.config.dt_a = a
         self.h_calculator.config.dt_b = b
-    
+
     def __repr__(self) -> str:
         """String representation of EnergyBalanceManager."""
         return (
@@ -380,8 +380,8 @@ class EnergyBalanceManager:
 def create_energy_balance_manager(
     g_method: str = 'automatic',
     h_use_stability: bool = True,
-    dt_a: Optional[float] = None,
-    dt_b: Optional[float] = None
+    dt_a: float | None = None,
+    dt_b: float | None = None
 ) -> EnergyBalanceManager:
     """
     Factory function to create EnergyBalanceManager.

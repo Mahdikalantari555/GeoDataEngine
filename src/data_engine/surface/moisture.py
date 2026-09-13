@@ -1,8 +1,8 @@
 """Moisture spectral indices: NDMI, MSI, NMDI."""
 
 import logging
+
 import numpy as np
-import xarray as xr
 
 from ..core.datacube import DataCube
 

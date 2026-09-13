@@ -11,9 +11,9 @@ algorithm with the following improvements:
 6. Enhanced confidence - Penalize easy scenes and relaxation
 """
 
-from typing import Optional, Dict, Any, Tuple, List
-from dataclasses import dataclass, field
 import logging
+from dataclasses import dataclass, field
+from typing import Any
 
 import numpy as np
 
@@ -21,20 +21,20 @@ import numpy as np
 @dataclass
 class AnchorCluster:
     """Represents a cluster of anchor pixels with statistics."""
-    pixel_indices: List[Tuple[int, int]]  # (y, x) coordinates
+    pixel_indices: list[tuple[int, int]]  # (y, x) coordinates
     ts_values: np.ndarray
-    h_values: Optional[np.ndarray] = None
-    le_values: Optional[np.ndarray] = None
-    ndvi_values: Optional[np.ndarray] = None
-    albedo_values: Optional[np.ndarray] = None
-    
+    h_values: np.ndarray | None = None
+    le_values: np.ndarray | None = None
+    ndvi_values: np.ndarray | None = None
+    albedo_values: np.ndarray | None = None
+
     # Statistics (anchor values) - use MEDIAN for robustness
     ts_median: float = np.nan
     h_median: float = np.nan
     le_median: float = np.nan
     ndvi_median: float = np.nan
     albedo_median: float = np.nan
-    
+
     def __post_init__(self):
         """Calculate median statistics after initialization."""
         if len(self.ts_values) > 0 and np.any(np.isfinite(self.ts_values)):
@@ -47,8 +47,8 @@ class AnchorCluster:
             self.ndvi_median = float(np.nanmedian(self.ndvi_values))
         if self.albedo_values is not None and len(self.albedo_values) > 0 and np.any(np.isfinite(self.albedo_values)):
             self.albedo_median = float(np.nanmedian(self.albedo_values))
-    
-    def to_dict(self) -> Dict[str, Any]:
+
+    def to_dict(self) -> dict[str, Any]:
         return {
             'pixel_indices': self.pixel_indices,
             'ts_median': self.ts_median,
@@ -67,10 +67,10 @@ class AnchorPixel:
         self,
         x: int,
         y: int,
-        temperature: Optional[float] = None,
-        ts: Optional[float] = None,
-        ndvi: Optional[float] = None,
-        albedo: Optional[float] = None
+        temperature: float | None = None,
+        ts: float | None = None,
+        ndvi: float | None = None,
+        albedo: float | None = None
     ):
         self.x = x
         self.y = y
@@ -79,7 +79,7 @@ class AnchorPixel:
         self.ndvi = ndvi
         self.albedo = albedo
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         return {
             'x': self.x,
             'y': self.y,
@@ -93,30 +93,30 @@ class AnchorPixel:
 @dataclass
 class AnchorPixelsResult:
     """Result of anchor pixel selection with cluster support."""
-    
+
     # Single pixel anchors (for backward compatibility)
-    cold_pixel: Optional[AnchorPixel] = None
-    hot_pixel: Optional[AnchorPixel] = None
-    
+    cold_pixel: AnchorPixel | None = None
+    hot_pixel: AnchorPixel | None = None
+
     # Cluster-based anchors (new)
-    cold_cluster: Optional[AnchorCluster] = None
-    hot_cluster: Optional[AnchorCluster] = None
-    
+    cold_cluster: AnchorCluster | None = None
+    hot_cluster: AnchorCluster | None = None
+
     method: str = "automatic"
     confidence: float = 0.0
-    
+
     # Validation results
     validation_passed: bool = False
-    validation_issues: List[str] = field(default_factory=list)
-    
+    validation_issues: list[str] = field(default_factory=list)
+
     # Scene metadata
     ts_median: float = np.nan
     ts_std: float = np.nan
     temp_difference: float = np.nan
-    
+
     # Relaxation level (0 = no relaxation, 1 = max relaxation)
     relaxation_level: float = 0.0
-    
+
     def __post_init__(self):
         """Ensure backward compatibility by creating single pixels from clusters."""
         # Create single pixel anchors from clusters for backward compatibility
@@ -132,7 +132,7 @@ class AnchorPixelsResult:
                     ndvi=self.cold_cluster.ndvi_values[0] if self.cold_cluster.ndvi_values is not None and len(self.cold_cluster.ndvi_values) > 0 else np.nan,
                     albedo=self.cold_cluster.albedo_values[0] if self.cold_cluster.albedo_values is not None and len(self.cold_cluster.albedo_values) > 0 else np.nan
                 )
-        
+
         if self.hot_cluster is not None and len(self.hot_cluster.pixel_indices) > 0:
             if self.hot_pixel is None:
                 best_y, best_x = self.hot_cluster.pixel_indices[0]
@@ -145,7 +145,7 @@ class AnchorPixelsResult:
                     albedo=self.hot_cluster.albedo_values[0] if self.hot_cluster.albedo_values is not None and len(self.hot_cluster.albedo_values) > 0 else np.nan
                 )
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
         result = {
             'method': self.method,
             'confidence': self.confidence,
@@ -156,19 +156,19 @@ class AnchorPixelsResult:
             'temp_difference': self.temp_difference,
             'relaxation_level': self.relaxation_level
         }
-        
+
         if self.cold_pixel is not None:
             result['cold_pixel'] = self.cold_pixel.to_dict()
-        
+
         if self.hot_pixel is not None:
             result['hot_pixel'] = self.hot_pixel.to_dict()
-        
+
         if self.cold_cluster is not None:
             result['cold_cluster'] = self.cold_cluster.to_dict()
-        
+
         if self.hot_cluster is not None:
             result['hot_cluster'] = self.hot_cluster.to_dict()
-        
+
         return result
 
 
@@ -209,24 +209,24 @@ class AnchorPixelSelector:
         self.min_temperature = min_temperature
         self.max_temperature = max_temperature
         self.method = method
-        
+
         # Cluster configuration
         self.cluster_size = cluster_size
-        
+
         # Scene normalization
         self.use_scene_normalization = use_scene_normalization
-        
+
         # Energy ratio thresholds
         self.hot_h_energy_ratio_min = hot_h_energy_ratio_min
         self.hot_le_energy_ratio_max = hot_le_energy_ratio_max
-        
+
         # ET ratio thresholds
         self.et_ratio_target = et_ratio_target
         self.et_ratio_tolerance = et_ratio_tolerance
-        
+
         # Physical constants
         self.lambda_v = lambda_v
-    
+
     def select(self, cube):
         """
         Select anchor pixels from DataCube.
@@ -237,7 +237,6 @@ class AnchorPixelSelector:
         Returns:
             AnchorPixelsResult
         """
-        from ..core.datacube import DataCube
 
         # Get required data
         ts = cube.get("lwir11")  # Surface temperature
@@ -267,7 +266,7 @@ class AnchorPixelSelector:
             rs_inst_val = float(np.nanmean(rs_inst.values))
             rs_daily_val = float(np.nanmean(rs_daily.values))
             rs_daily_w = rs_daily_val * MJ_M2_DAY_TO_W
-            
+
             if rs_daily_w > 0:
                 et0_inst = et0_daily_val * (rs_inst_val / rs_daily_w)
 
@@ -287,15 +286,15 @@ class AnchorPixelSelector:
     def select_anchor_pixels(
         self,
         ts: np.ndarray,
-        ndvi: Optional[np.ndarray] = None,
-        albedo: Optional[np.ndarray] = None,
-        qa_pixel: Optional[np.ndarray] = None,
-        lai: Optional[np.ndarray] = None,
-        le: Optional[np.ndarray] = None,
-        rn: Optional[np.ndarray] = None,
-        g: Optional[np.ndarray] = None,
-        h: Optional[np.ndarray] = None,
-        et0_inst: Optional[float] = None,
+        ndvi: np.ndarray | None = None,
+        albedo: np.ndarray | None = None,
+        qa_pixel: np.ndarray | None = None,
+        lai: np.ndarray | None = None,
+        le: np.ndarray | None = None,
+        rn: np.ndarray | None = None,
+        g: np.ndarray | None = None,
+        h: np.ndarray | None = None,
+        et0_inst: float | None = None,
         **kwargs
     ) -> AnchorPixelsResult:
         """
@@ -316,8 +315,6 @@ class AnchorPixelSelector:
         Returns:
             AnchorPixelsResult with selected anchor pixels and clusters
         """
-        import logging
-        from scipy.spatial import ConvexHull
 
         logger = logging.getLogger(__name__)
 
@@ -371,16 +368,16 @@ class AnchorPixelSelector:
     def _select_enhanced(
         self,
         ts: np.ndarray,
-        ndvi: Optional[np.ndarray],
-        albedo: Optional[np.ndarray],
+        ndvi: np.ndarray | None,
+        albedo: np.ndarray | None,
         valid: np.ndarray,
-        qa_pixel: Optional[np.ndarray] = None,
-        lai: Optional[np.ndarray] = None,
-        le: Optional[np.ndarray] = None,
-        rn: Optional[np.ndarray] = None,
-        g: Optional[np.ndarray] = None,
-        h: Optional[np.ndarray] = None,
-        et0_inst: Optional[float] = None
+        qa_pixel: np.ndarray | None = None,
+        lai: np.ndarray | None = None,
+        le: np.ndarray | None = None,
+        rn: np.ndarray | None = None,
+        g: np.ndarray | None = None,
+        h: np.ndarray | None = None,
+        et0_inst: float | None = None
     ) -> AnchorPixelsResult:
         """
         Enhanced anchor pixel selection with all improvements.
@@ -394,10 +391,9 @@ class AnchorPixelSelector:
         6. dT-Ts shape validation
         7. Enhanced confidence calculation
         """
-        import logging
         logger = logging.getLogger(__name__)
         logger.info("Starting enhanced METRIC anchor pixel selection")
-        
+
         # Create valid mask excluding NaN values
         valid_mask = valid & ~np.isnan(ts)
         if ndvi is not None:
@@ -422,9 +418,9 @@ class AnchorPixelSelector:
 
         if n_points < 20:
             logger.warning(f"Low point count ({n_points}) - consider using more relaxation")
-        
+
         # === STEP 1: SCENE-SCALE TEMPERATURE NORMALIZATION ===
-        
+
         if self.use_scene_normalization:
             ts_median = np.nanmedian(valid_ts)
             ts_anom = ts - ts_median
@@ -432,13 +428,13 @@ class AnchorPixelSelector:
         else:
             ts_anom = ts.copy()
             ts_median = np.nanmedian(valid_ts)
-        
+
         ts_std = np.nanstd(valid_ts)
         logger.info(f"Ts statistics: median={ts_median:.2f} K, std={ts_std:.2f} K")
-        
+
         # Use normalized Ts for percentile calculations
         valid_ts_anom = ts_anom[valid_mask]
-        
+
         # === STEP 2: PERCENTILE-BASED CANDIDATE SELECTION ===
         # METRIC specifications for percentile thresholds
 
@@ -455,15 +451,15 @@ class AnchorPixelSelector:
         hot_lai_max = np.percentile(valid_lai, 20) if valid_lai is not None else None
 
         logger.info("METRIC percentile thresholds (using normalized Ts):")
-        
+
         cold_ndvi_str = f"{cold_ndvi_min:.3f}" if cold_ndvi_min is not None else "N/A"
         cold_albedo_str = f"{cold_albedo_max:.3f}" if cold_albedo_max is not None else "N/A"
         cold_lai_str = f"{cold_lai_min:.3f}" if cold_lai_min is not None else "N/A"
-        
+
         hot_ndvi_str = f"{hot_ndvi_max:.3f}" if hot_ndvi_max is not None else "N/A"
         hot_albedo_str = f"{hot_albedo_min:.3f}" if hot_albedo_min is not None else "N/A"
         hot_lai_str = f"{hot_lai_max:.3f}" if hot_lai_max is not None else "N/A"
-        
+
         logger.info(
             f"  Cold - Ts_anom <= {cold_ts_max:.2f}K, NDVI >= {cold_ndvi_str}, "
             f"Albedo <= {cold_albedo_str}, LAI >= {cold_lai_str}"
@@ -504,9 +500,9 @@ class AnchorPixelSelector:
         # Track relaxation level
         relaxation_level = 0.0
         max_relaxation = 3  # Allow up to 3 relaxation steps
-        
+
         # === STEP 3: ENERGY RATIO CONSTRAINTS FOR HOT PIXELS ===
-        
+
         if hot_count >= 3 and (h is not None or le is not None):
             hot_candidates = self._apply_energy_ratio_constraints(
                 hot_candidates, h, le, rn, g
@@ -515,34 +511,34 @@ class AnchorPixelSelector:
             logger.info(f"After energy ratio constraints: {hot_count} hot candidates")
 
         # === STEP 4: RELAX CONSTRAINTS IF NEEDED ===
-        
+
         while (cold_count < 5 or hot_count < 5) and relaxation_level < max_relaxation:
             relaxation_level += 0.25
             logger.info(f"Relaxing constraints (level={relaxation_level:.2f})")
-            
+
             # Relax temperature percentiles
             cold_ts_max = np.percentile(valid_ts_anom, 15 + relaxation_level * 10)
             hot_ts_min = np.percentile(valid_ts_anom, 90 - relaxation_level * 10)
-            
+
             cold_candidates = valid_mask & (ts_anom <= cold_ts_max)
             hot_candidates = valid_mask & (ts_anom >= hot_ts_min)
-            
+
             # Relax NDVI constraints
             if valid_ndvi is not None:
                 cold_ndvi_min = np.percentile(valid_ndvi, 90 - relaxation_level * 10)
                 hot_ndvi_max = np.percentile(valid_ndvi, 10 + relaxation_level * 10)
                 cold_candidates &= (ndvi >= cold_ndvi_min)
                 hot_candidates &= (ndvi <= hot_ndvi_max)
-            
+
             # Reapply energy ratio constraints to relaxed hot candidates
             if hot_count >= 3 and (h is not None or le is not None):
                 hot_candidates = self._apply_energy_ratio_constraints(
                     hot_candidates, h, le, rn, g
                 )
-            
+
             cold_count = np.sum(cold_candidates)
             hot_count = np.sum(hot_candidates)
-            
+
             logger.info(f"After relaxation: {cold_count} cold, {hot_count} hot candidates")
 
         # Final fallback if still insufficient
@@ -554,7 +550,7 @@ class AnchorPixelSelector:
             hot_candidates = valid_mask & (ts_anom >= np.percentile(valid_ts_anom, 80))
             cold_count = np.sum(cold_candidates)
             hot_count = np.sum(hot_candidates)
-            
+
             if cold_count < 1 or hot_count < 1:
                 raise ValueError("Insufficient candidates even after extreme fallback")
 
@@ -617,47 +613,47 @@ class AnchorPixelSelector:
         # === STEP 7: CALCULATE CLUSTER STATISTICS (MEDIAN) ===
 
         cold_ts_values = np.array([ts[y, x] for y, x in cold_pool_indices])
-        
+
         # Handle H values - only create array if h is available
         if h is not None:
             cold_h_values = np.array([h[y, x] if not np.isnan(h[y, x]) else np.nan for y, x in cold_pool_indices])
         else:
             cold_h_values = np.array([])  # Empty array, will result in NaN median
-        
+
         # Handle LE values - only create array if le is available
         if le is not None:
             cold_le_values = np.array([le[y, x] if not np.isnan(le[y, x]) else np.nan for y, x in cold_pool_indices])
         else:
             cold_le_values = np.array([])
-        
+
         # Handle NDVI and albedo values
         if ndvi is not None:
             cold_ndvi_values = np.array([ndvi[y, x] if not np.isnan(ndvi[y, x]) else np.nan for y, x in cold_pool_indices])
         else:
             cold_ndvi_values = np.array([])
-        
+
         if albedo is not None:
             cold_albedo_values = np.array([albedo[y, x] if not np.isnan(albedo[y, x]) else np.nan for y, x in cold_pool_indices])
         else:
             cold_albedo_values = np.array([])
 
         hot_ts_values = np.array([ts[y, x] for y, x in hot_pool_indices])
-        
+
         if h is not None:
             hot_h_values = np.array([h[y, x] if not np.isnan(h[y, x]) else np.nan for y, x in hot_pool_indices])
         else:
             hot_h_values = np.array([])
-        
+
         if le is not None:
             hot_le_values = np.array([le[y, x] if not np.isnan(le[y, x]) else np.nan for y, x in hot_pool_indices])
         else:
             hot_le_values = np.array([])
-        
+
         if ndvi is not None:
             hot_ndvi_values = np.array([ndvi[y, x] if not np.isnan(ndvi[y, x]) else np.nan for y, x in hot_pool_indices])
         else:
             hot_ndvi_values = np.array([])
-        
+
         if albedo is not None:
             hot_albedo_values = np.array([albedo[y, x] if not np.isnan(albedo[y, x]) else np.nan for y, x in hot_pool_indices])
         else:
@@ -714,13 +710,13 @@ class AnchorPixelSelector:
                 validation_issues.append(f"Cold pixel H={h_cold:.1f} W/m² > 150 W/m² (may indicate poor cold anchor)")
                 # Don't fail for this - just warn
                 logger.warning(f"Cold pixel H={h_cold:.1f} W/m² is higher than typical")
-        
+
         if le is not None and le_cold is not None and not np.isnan(le_cold) and rn is not None and g is not None:
             # Check that LE_cold <= available energy (physical constraint)
             rn_cold_val = np.median([rn[y, x] for y, x in cold_pool_indices])
             g_cold_val = np.median([g[y, x] for y, x in cold_pool_indices])
             available_energy_cold = rn_cold_val - g_cold_val
-            
+
             if le_cold > available_energy_cold:
                 validation_issues.append(f"Cold pixel LE={le_cold:.1f} > available energy {available_energy_cold:.1f} W/m²")
                 validation_passed = False
@@ -730,16 +726,16 @@ class AnchorPixelSelector:
             rn_hot_val = np.median([rn[y, x] for y, x in hot_pool_indices])
             g_hot_val = np.median([g[y, x] for y, x in hot_pool_indices])
             available_energy_hot = rn_hot_val - g_hot_val
-            
+
             if available_energy_hot > 10:  # Valid energy
                 h_ratio = h_hot / available_energy_hot if h_hot is not None and available_energy_hot > 0 else 0
                 le_ratio = le_hot / available_energy_hot if le_hot is not None and available_energy_hot > 0 else 0
-                
+
                 if h_ratio < 0.5:  # Should be >= 0.8 ideally
                     validation_issues.append(f"Hot pixel H ratio={h_ratio:.2f} < 0.5 (insufficient energy dominance)")
                     # Don't fail - may be due to data quality
                     logger.warning(f"Hot pixel H ratio={h_ratio:.2f} is low")
-                
+
                 if le_ratio > 0.5:  # Should be <= 0.2 ideally
                     validation_issues.append(f"Hot pixel LE ratio={le_ratio:.2f} > 0.5 (excessive evaporation)")
                     # Don't fail
@@ -796,10 +792,10 @@ class AnchorPixelSelector:
     def _apply_energy_ratio_constraints(
         self,
         hot_candidates: np.ndarray,
-        h: Optional[np.ndarray],
-        le: Optional[np.ndarray],
-        rn: Optional[np.ndarray],
-        g: Optional[np.ndarray]
+        h: np.ndarray | None,
+        le: np.ndarray | None,
+        rn: np.ndarray | None,
+        g: np.ndarray | None
     ) -> np.ndarray:
         """
         Apply METRIC-compliant hot pixel energy ratio constraints.
@@ -810,40 +806,39 @@ class AnchorPixelSelector:
         
         If constraints remove too many pixels, relax to 0.7 / 0.3.
         """
-        import logging
         logger = logging.getLogger(__name__)
-        
+
         if h is None or le is None or rn is None or g is None:
             logger.warning("Energy data not available - skipping hot pixel energy constraints")
             return hot_candidates
-        
+
         available_energy = rn - g
         valid_energy = (available_energy > 10) & ~np.isnan(available_energy)
-        
+
         # Apply constraints where energy is valid
         energy_mask = hot_candidates.copy()
-        
+
         h_ratio = np.zeros_like(h, dtype=float)
         le_ratio = np.zeros_like(le, dtype=float)
-        
+
         with np.errstate(divide='ignore', invalid='ignore'):
             h_ratio = np.where(valid_energy, h / np.maximum(available_energy, 1.0), 0)
             le_ratio = np.where(valid_energy, le / np.maximum(available_energy, 1.0), 0)
-        
+
         # Primary constraints
         energy_mask &= (h_ratio >= self.hot_h_energy_ratio_min)
         energy_mask &= (le_ratio <= self.hot_le_energy_ratio_max)
-        
+
         n_after_primary = np.sum(energy_mask)
         n_before = np.sum(hot_candidates)
-        
+
         if n_after_primary < max(5, n_before * 0.1):  # Less than 10% remaining
             # Relax constraints
             logger.info(f"Relaxing hot pixel energy constraints: {n_after_primary} pixels remaining, using 0.7/0.3")
             energy_mask = hot_candidates.copy()
             energy_mask &= (h_ratio >= 0.7)
             energy_mask &= (le_ratio <= 0.3)
-        
+
         return energy_mask
 
     def _rank_cold_by_et_ratio(
@@ -860,36 +855,35 @@ class AnchorPixelSelector:
         
         Selection criterion: minimize |ET_cold / ET0_inst - 1|
         """
-        import logging
         logger = logging.getLogger(__name__)
-        
+
         # Convert LE to ET (mm/hr)
         # ET = LE * 3600 / (lambda_v * 1000)
         et_values = le * 3600.0 / (self.lambda_v * 1000.0)
-        
+
         # Calculate ET ratio
         with np.errstate(divide='ignore', invalid='ignore'):
             et_ratio = np.where(et0_inst > 0, et_values / et0_inst, np.nan)
-        
+
         # Score: minimize deviation from 1.0
         et_ratio_deviation = np.abs(et_ratio - 1.0)
-        
+
         # Apply to cold candidates
         candidate_scores = np.full(et_ratio_deviation.shape, np.nan)
         candidate_scores[cold_candidates] = et_ratio_deviation[cold_candidates]
-        
+
         # Get valid indices
         valid_mask = np.isfinite(candidate_scores) & cold_candidates
         valid_indices = np.where(valid_mask)[0]
-        
+
         # Sort by score (ascending - best first)
         scores = candidate_scores[valid_mask]
         sorted_local_indices = np.argsort(scores)
         sorted_indices = valid_indices[sorted_local_indices]
-        
+
         logger.info(f"ET ratio statistics: median={np.nanmedian(et_ratio[cold_candidates]):.3f}, "
                    f"mean={np.nanmean(et_ratio[cold_candidates]):.3f}")
-        
+
         return sorted_indices
 
     def _validate_dt_ts_shape(
@@ -903,7 +897,7 @@ class AnchorPixelSelector:
         g_cold: float,
         g_hot: float,
         air_temperature: float
-    ) -> Tuple[bool, List[str]]:
+    ) -> tuple[bool, list[str]]:
         """
         Validate dT-Ts relationship shape after calibration.
         
@@ -916,44 +910,43 @@ class AnchorPixelSelector:
         - Temperature range is sufficient
         - Hot pixel energy dominance (H ≈ available energy)
         """
-        import logging
         logger = logging.getLogger(__name__)
-        
+
         issues = []
-        
+
         # Calculate dT values
         dT_cold = ts_cold - air_temperature
         dT_hot = ts_hot - air_temperature
-        
+
         # Calculate temperature range
         ts_range = ts_hot - ts_cold
-        
+
         # NOTE: The slope (a coefficient) CANNOT be validated here because:
         # - At anchor selection time, we haven't computed the METRIC calibration yet
         # - The actual 'a' coefficient is computed in DTCalibration.calibrate()
         # - The slope validation should be done AFTER calibration, using the
         #   calibrated 'a_coefficient' from CalibrationResult
-        # 
+        #
         # The old code calculated: slope = (dT_hot - dT_cold) / (Ts_hot - Ts_cold)
         # But this is ALWAYS 1.0 because dT = Ts - Ta, so:
         # (dT_hot - dT_cold) = (Ts_hot - Ta) - (Ts_cold - Ta) = Ts_hot - Ts_cold
         # Therefore: slope = (Ts_hot - Ts_cold) / (Ts_hot - Ts_cold) = 1.0
-        # 
+        #
         # The REAL METRIC 'a' coefficient represents dt_a = H / dT in W/m²/K,
         # which is computed during calibration from:
         # a = (Rn_hot - G_hot) / dT_hot  (physics-based calibration)
-        
+
         # Validate physical plausibility of dT values
         if dT_cold < -5 or dT_cold > 10:
             issues.append(f"Cold pixel dT={dT_cold:.2f}K outside plausible range [-5, 10]K")
-        
+
         if dT_hot < 5 or dT_hot > 45:
             issues.append(f"Hot pixel dT={dT_hot:.2f}K outside plausible range [5, 45]K")
-        
+
         # Validate temperature range
         if ts_range < 10:
             issues.append(f"Temperature range {ts_range:.2f}K < 10K - insufficient for calibration")
-        
+
         # Validate hot pixel energy dominance
         # Hot pixel should have H ≈ available energy (Rn - G)
         if h_hot is not None and not np.isnan(h_hot) and rn_hot is not None and g_hot is not None:
@@ -962,17 +955,17 @@ class AnchorPixelSelector:
                 h_ratio = h_hot / available_energy_hot
                 if h_ratio < 0.5:
                     issues.append(f"Hot pixel H ratio={h_ratio:.2f} < 0.5 (insufficient energy dominance)")
-        
+
         # dT at median Ts should be physically plausible (2-10 K typical METRIC range)
         ts_median = (ts_cold + ts_hot) / 2
         dT_median = (dT_cold + dT_hot) / 2
         if dT_median < 0 or dT_median > 25:
             issues.append(f"dT at median Ts={dT_median:.2f}K outside plausible range [0, 25]K")
-        
+
         if len(issues) > 0:
             logger.warning(f"dT-Ts shape issues: dT_cold={dT_cold:.2f}K, dT_hot={dT_hot:.2f}K, {issues}")
             return False, issues
-        
+
         logger.info(f"dT-Ts shape validation PASSED: dT_cold={dT_cold:.2f}K, dT_hot={dT_hot:.2f}K")
         return True, []
 
@@ -1001,47 +994,46 @@ class AnchorPixelSelector:
         - Small ΔTs
         - dT-Ts shape validation failure
         """
-        import logging
         logger = logging.getLogger(__name__)
-        
+
         confidence = 0.5  # Base confidence
-        
+
         # Bonus for passing validation
         if validation_passed:
             confidence += 0.15
-        
+
         # Bonus for dT-Ts shape validation
         if dt_shape_valid:
             confidence += 0.10
-        
+
         # Scale by temperature difference (target: 15-25 K)
         temp_factor = min(1.0, max(0.5, temp_diff / 20.0))
         confidence *= temp_factor
-        
+
         # Penalty for low Ts variance (easy scenes should not have high confidence)
         # Typical Ts std: 5-15 K for healthy scenes
         ts_variance_factor = min(1.0, max(0.5, ts_valid_std / 8.0))
         confidence *= ts_variance_factor
-        
+
         # Penalty for excessive relaxation
         relaxation_penalty = np.exp(-relaxation_level * 2)
         confidence *= relaxation_penalty
-        
+
         # Bonus for having many candidates (robust selection)
         n_candidates = n_cold_candidates + n_hot_candidates
         candidate_factor = min(1.0, max(0.7, n_candidates / 50.0))
         confidence *= (0.8 + 0.2 * candidate_factor)
-        
+
         # Clip to [0, 1]
         confidence = np.clip(confidence, 0.0, 1.0)
-        
+
         logger.debug(
             f"Confidence breakdown: base=0.5, validation={0.15 if validation_passed else 0}, "
             f"dt_shape={0.1 if dt_shape_valid else 0}, temp_factor={temp_factor:.2f}, "
             f"variance_factor={ts_variance_factor:.2f}, relaxation_penalty={relaxation_penalty:.2f}, "
             f"candidate_factor={candidate_factor:.2f}"
         )
-        
+
         return confidence
 
 
@@ -1049,4 +1041,4 @@ class AnchorPixelSelector:
 AnchorPixelSelector = AnchorPixelSelector
 
 
-__all__ = ['AnchorPixel', 'AnchorPixelsResult', 'AnchorPixelSelector', 'AnchorCluster']
+__all__ = ['AnchorCluster', 'AnchorPixel', 'AnchorPixelSelector', 'AnchorPixelsResult']

@@ -4,14 +4,14 @@ This module provides classes for creating visualization products
 including spatial maps, time series, histograms, and energy balance plots.
 """
 
-from typing import Dict, Optional, List, Any, Union, Tuple
-import numpy as np
-import xarray as xr
-import matplotlib.pyplot as plt
-import matplotlib.colors as mcolors
-from matplotlib.patches import Rectangle
 from datetime import datetime
 from pathlib import Path
+from typing import Any
+
+import matplotlib.colors as mcolors
+import matplotlib.pyplot as plt
+import numpy as np
+import xarray as xr
 
 from data_engine.core.datacube import DataCube
 
@@ -27,7 +27,7 @@ class Visualization:
         figure_dpi: DPI for output figures
         default_colormap: Default colormap for ET products
     """
-    
+
     # Default colormaps for different products
     COLORMAPS = {
         'ET': 'viridis',
@@ -40,7 +40,7 @@ class Visualization:
         'NDVI': 'YlGn',
         'LST': 'turbo'
     }
-    
+
     # Colorbar labels
     LABELS = {
         'ET': 'ET (mm/day)',
@@ -53,7 +53,7 @@ class Visualization:
         'NDVI': 'NDVI',
         'LST': 'Surface Temperature (K)'
     }
-    
+
     def __init__(
         self,
         output_dir: str = ".",
@@ -70,10 +70,10 @@ class Visualization:
         self.output_dir = Path(output_dir)
         self.figure_dpi = figure_dpi
         self.default_colormap = default_colormap
-        
+
         # Create output directory if it doesn't exist
         self.output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     def _get_colormap(self, product: str) -> str:
         """Get colormap for a product.
         
@@ -84,7 +84,7 @@ class Visualization:
             Colormap name
         """
         return self.COLORMAPS.get(product, self.default_colormap)
-    
+
     def _get_label(self, product: str) -> str:
         """Get colorbar label for a product.
         
@@ -95,13 +95,13 @@ class Visualization:
             Label string
         """
         return self.LABELS.get(product, f'{product}')
-    
+
     def _save_figure(
         self,
         fig: plt.Figure,
-        output_path: Optional[str],
+        output_path: str | None,
         show: bool = False
-    ) -> Optional[str]:
+    ) -> str | None:
         """Save figure to file and optionally display.
         
         Args:
@@ -114,7 +114,7 @@ class Visualization:
         """
         if show:
             plt.show()
-        
+
         if output_path:
             fig.savefig(
                 output_path,
@@ -123,22 +123,22 @@ class Visualization:
                 facecolor='white'
             )
             return output_path
-        
+
         return None
-    
+
     def plot_et_map(
         self,
-        data: Union[np.ndarray, xr.DataArray],
+        data: np.ndarray | xr.DataArray,
         cube: DataCube,
         title: str = "Evapotranspiration Map",
         product: str = 'ETa',
-        colormap: Optional[str] = None,
-        output_path: Optional[str] = None,
+        colormap: str | None = None,
+        output_path: str | None = None,
         show: bool = False,
-        vmin: Optional[float] = None,
-        vmax: Optional[float] = None,
+        vmin: float | None = None,
+        vmax: float | None = None,
         overlay_contours: bool = False
-    ) -> Optional[str]:
+    ) -> str | None:
         """Create spatial ETa map.
         
         Args:
@@ -159,17 +159,17 @@ class Visualization:
         # Convert to numpy array
         if isinstance(data, xr.DataArray):
             data = data.values
-        
+
         # Create figure
         fig, ax = plt.subplots(figsize=(10, 8))
-        
+
         # Get colormap and label
         cmap = colormap or self._get_colormap(product)
         label = self._get_label(product)
-        
+
         # Create masked array for NaN handling
         data_masked = np.ma.masked_invalid(data)
-        
+
         # Determine vmin/vauto
         valid_data = data[~np.isnan(data)]
         if len(valid_data) > 0:
@@ -177,7 +177,7 @@ class Visualization:
                 vmin = np.nanmin(valid_data)
             if vmax is None:
                 vmax = np.nanmax(valid_data)
-        
+
         # Plot data
         im = ax.imshow(
             data_masked,
@@ -186,21 +186,21 @@ class Visualization:
             vmax=vmax,
             origin='upper'
         )
-        
+
         # Add contours if requested
         if overlay_contours and len(valid_data) > 0:
             levels = np.linspace(vmin, vmax, 10)
             ax.contour(data, levels=levels, colors='black', linewidths=0.5, alpha=0.5)
-        
+
         # Add colorbar
         cbar = plt.colorbar(im, ax=ax, shrink=0.8)
         cbar.set_label(label)
-        
+
         # Set title and labels
         ax.set_title(title)
         ax.set_xlabel('Pixel X')
         ax.set_ylabel('Pixel Y')
-        
+
         # Add scene info if available
         scene_id = cube.metadata.get('scene_id', '')
         if scene_id:
@@ -211,22 +211,22 @@ class Visualization:
                 verticalalignment='top',
                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.8)
             )
-        
+
         plt.tight_layout()
-        
+
         return self._save_figure(fig, output_path, show)
-    
+
     def plot_et_timeseries(
         self,
-        et_data_list: List[np.ndarray],
-        dates: List[datetime],
-        locations: Optional[List[str]] = None,
-        output_path: Optional[str] = None,
+        et_data_list: list[np.ndarray],
+        dates: list[datetime],
+        locations: list[str] | None = None,
+        output_path: str | None = None,
         show: bool = False,
         title: str = "ET Time Series",
         ylabel: str = "ETa (mm/day)",
         error_bars: bool = False
-    ) -> Optional[str]:
+    ) -> str | None:
         """Create ETa time series plot.
         
         Args:
@@ -243,17 +243,17 @@ class Visualization:
             Output file path if saved
         """
         fig, ax = plt.subplots(figsize=(12, 6))
-        
+
         # Compute mean ET for each date
         et_means = [np.nanmean(et) for et in et_data_list]
-        
+
         # Compute std for error bars
         if error_bars:
             et_stds = [np.nanstd(et) for et in et_data_list]
-        
+
         # Convert dates to matplotlib format
         mpl_dates = [plt.matplotlib.dates.date2num(d) for d in dates]
-        
+
         # Plot
         if error_bars:
             ax.errorbar(
@@ -263,7 +263,7 @@ class Visualization:
             )
         else:
             ax.plot(mpl_dates, et_means, 'o-', linewidth=1.5, markersize=6)
-        
+
         # Format x-axis
         ax.xaxis.set_major_formatter(
             plt.matplotlib.dates.DateFormatter('%Y-%m-%d')
@@ -272,33 +272,33 @@ class Visualization:
             plt.matplotlib.dates.WeekdayLocator(interval=1)
         )
         plt.setp(ax.xaxis.get_majorticklabels(), rotation=45, ha='right')
-        
+
         # Labels and title
         ax.set_xlabel('Date')
         ax.set_ylabel(ylabel)
         ax.set_title(title)
-        
+
         # Add grid
         ax.grid(True, alpha=0.3)
-        
+
         # Add location labels if provided
         if locations:
             ax.legend(locations, loc='upper right')
-        
+
         plt.tight_layout()
-        
+
         return self._save_figure(fig, output_path, show)
-    
+
     def plot_et_histogram(
         self,
-        data: Union[np.ndarray, xr.DataArray],
+        data: np.ndarray | xr.DataArray,
         bins: int = 50,
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
         show: bool = False,
         title: str = "ET Distribution",
         xlabel: str = "ET (mm/day)",
         overlay_stats: bool = True
-    ) -> Optional[str]:
+    ) -> str | None:
         """Create ETa distribution histogram.
         
         Args:
@@ -316,34 +316,34 @@ class Visualization:
         # Convert to numpy array
         if isinstance(data, xr.DataArray):
             data = data.values
-        
+
         # Remove NaN values
         valid_data = data[~np.isnan(data)]
-        
+
         if len(valid_data) == 0:
             raise ValueError("No valid data for histogram")
-        
+
         fig, ax = plt.subplots(figsize=(10, 6))
-        
+
         # Plot histogram
         n, bins_edges, patches = ax.hist(
             valid_data, bins=bins, color='steelblue',
             edgecolor='white', alpha=0.7
         )
-        
+
         # Overlay statistics
         if overlay_stats:
             mean_val = np.mean(valid_data)
             median_val = np.median(valid_data)
             std_val = np.std(valid_data)
-            
+
             ax.axvline(mean_val, color='red', linestyle='--', linewidth=2,
                       label=f'Mean: {mean_val:.2f}')
             ax.axvline(median_val, color='green', linestyle='-', linewidth=2,
                       label=f'Median: {median_val:.2f}')
-            
+
             ax.legend(loc='upper right')
-            
+
             # Add stats text box
             stats_text = (f'Mean: {mean_val:.2f}\n'
                          f'Median: {median_val:.2f}\n'
@@ -356,28 +356,28 @@ class Visualization:
                 verticalalignment='top',
                 bbox=dict(boxstyle='round', facecolor='white', alpha=0.9)
             )
-        
+
         # Labels
         ax.set_xlabel(xlabel)
         ax.set_ylabel('Frequency')
         ax.set_title(title)
         ax.grid(True, alpha=0.3, axis='y')
-        
+
         plt.tight_layout()
-        
+
         return self._save_figure(fig, output_path, show)
-    
+
     def plot_energy_balance(
         self,
-        Rn: Union[np.ndarray, xr.DataArray],
-        G: Union[np.ndarray, xr.DataArray],
-        H: Union[np.ndarray, xr.DataArray],
-        LE: Union[np.ndarray, xr.DataArray],
-        output_path: Optional[str] = None,
+        Rn: np.ndarray | xr.DataArray,
+        G: np.ndarray | xr.DataArray,
+        H: np.ndarray | xr.DataArray,
+        LE: np.ndarray | xr.DataArray,
+        output_path: str | None = None,
         show: bool = False,
         title: str = "Energy Balance Components",
         stacked: bool = True
-    ) -> Optional[str]:
+    ) -> str | None:
         """Create energy balance bar chart.
         
         Args:
@@ -402,15 +402,15 @@ class Visualization:
             H = H.values
         if isinstance(LE, xr.DataArray):
             LE = LE.values
-        
+
         # Compute mean values
         Rn_mean = np.nanmean(Rn)
         G_mean = np.nanmean(G)
         H_mean = np.nanmean(H)
         LE_mean = np.nanmean(LE)
-        
+
         fig, axes = plt.subplots(1, 2, figsize=(14, 5))
-        
+
         # Left panel: Stacked bar chart
         ax1 = axes[0]
         if stacked:
@@ -419,23 +419,23 @@ class Visualization:
             G_vals = [G_mean]
             H_vals = [H_mean]
             LE_vals = [LE_mean]
-            
+
             # Create stacked bars
             bottom = np.zeros(1)
             colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D']
             components = [('G', G_vals), ('H', H_vals), ('LE', LE_vals)]
-            
+
             ax1.bar(labels, Rn_vals, label='Rn', color='#2E86AB', alpha=0.8)
-            
+
             # Check energy balance closure
             residual = Rn_mean - (G_mean + H_mean + LE_mean)
             if residual < 0:
                 ax1.bar(labels, [residual], bottom=[Rn_mean],
                        label='Residual', color='gray', alpha=0.5)
-            
+
             ax1.axhline(Rn_mean, color='black', linestyle='--',
                        linewidth=1, label=f'Rn = {Rn_mean:.1f}')
-            
+
             ax1.set_ylabel('Energy Flux (W/m²)')
             ax1.set_title('Energy Components (Stacked)')
             ax1.legend()
@@ -445,28 +445,28 @@ class Visualization:
             names = [c[0] for c in components]
             values = [c[1] for c in components]
             colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D']
-            
+
             bars = ax1.bar(names, values, color=colors, alpha=0.8)
             ax1.set_ylabel('Energy Flux (W/m²)')
             ax1.set_title('Energy Components')
-            
+
             # Add value labels on bars
             for bar, val in zip(bars, values):
-                ax1.text(bar.get_x() + bar.get_width()/2, bar.get_height() + 5,
+                ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 5,
                         f'{val:.1f}', ha='center', va='bottom', fontsize=10)
-        
+
         # Right panel: Pie chart of relative proportions
         ax2 = axes[1]
-        
+
         # Calculate proportions (excluding Rn)
         total = G_mean + H_mean + LE_mean
         if total > 0:
-            proportions = [G_mean/total * 100, H_mean/total * 100, LE_mean/total * 100]
+            proportions = [G_mean / total * 100, H_mean / total * 100, LE_mean / total * 100]
             labels = [f'G ({proportions[0]:.1f}%)',
                      f'H ({proportions[1]:.1f}%)',
                      f'LE ({proportions[2]:.1f}%)']
             colors_pie = ['#A23B72', '#F18F01', '#C73E1D']
-            
+
             wedges, texts, autotexts = ax2.pie(
                 [G_mean, H_mean, LE_mean],
                 labels=labels,
@@ -475,23 +475,23 @@ class Visualization:
                 startangle=90
             )
             ax2.set_title('Proportion of Energy Balance')
-        
+
         # Overall title
         fig.suptitle(title, fontsize=14, fontweight='bold')
-        
+
         plt.tight_layout()
-        
+
         return self._save_figure(fig, output_path, show)
-    
+
     def plot_rgb_composite(
         self,
         cube: DataCube,
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
         show: bool = False,
         title: str = "True Color RGB Composite",
         contrast_stretch: bool = True,
         brightness: float = 1.0
-    ) -> Optional[str]:
+    ) -> str | None:
         """Create true-color RGB composite.
         
         Args:
@@ -510,49 +510,49 @@ class Visualization:
         missing = [b for b in required_bands if b not in cube.data]
         if missing:
             raise ValueError(f"Missing bands for RGB composite: {missing}")
-        
+
         # Get bands
         blue = cube.data['blue'].values.astype(np.float32)
         green = cube.data['green'].values.astype(np.float32)
         red = cube.data['red'].values.astype(np.float32)
-        
+
         # Apply contrast stretching
         if contrast_stretch:
             def stretch(arr, p=2):
                 """Percentile-based contrast stretch."""
-                low, high = np.nanpercentile(arr, (p, 100-p))
+                low, high = np.nanpercentile(arr, (p, 100 - p))
                 return np.clip((arr - low) / (high - low) * 255, 0, 255)
             blue = stretch(blue)
             green = stretch(green)
             red = stretch(red)
-        
+
         # Apply brightness
         blue = np.clip(blue * brightness, 0, 255)
         green = np.clip(green * brightness, 0, 255)
         red = np.clip(red * brightness, 0, 255)
-        
+
         # Stack RGB
         rgb = np.dstack([red, green, blue]).astype(np.uint8)
-        
+
         fig, ax = plt.subplots(figsize=(10, 8))
-        
+
         ax.imshow(rgb)
         ax.set_title(title)
         ax.set_xlabel('Pixel X')
         ax.set_ylabel('Pixel Y')
-        
+
         plt.tight_layout()
-        
+
         return self._save_figure(fig, output_path, show)
-    
+
     def create_summary_figure(
         self,
         cube: DataCube,
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
         show: bool = False,
-        calibration_result: Optional[Any] = None,
-        anchor_result: Optional[Any] = None  # NEW: AnchorPixelsResult with clusters
-    ) -> Optional[str]:
+        calibration_result: Any | None = None,
+        anchor_result: Any | None = None  # NEW: AnchorPixelsResult with clusters
+    ) -> str | None:
         """Create summary figure with multiple panels.
 
         Args:
@@ -566,7 +566,7 @@ class Visualization:
             Output file path if saved
         """
         fig, axes = plt.subplots(2, 2, figsize=(14, 12))
-        
+
         # Panel 1: RGB Composite
         ax1 = axes[0, 0]
         try:
@@ -574,7 +574,7 @@ class Visualization:
                 blue = cube.data['blue'].values.astype(np.float32)
                 green = cube.data['green'].values.astype(np.float32)
                 red = cube.data['red'].values.astype(np.float32)
-                
+
                 # Simple contrast stretch
                 def stretch(arr):
                     p2, p98 = np.nanpercentile(arr, (2, 98))
@@ -586,7 +586,7 @@ class Visualization:
                     stretch(green),
                     stretch(blue)
                 ]).astype(np.uint8)
-                
+
                 ax1.imshow(rgb)
                 ax1.set_title('RGB Composite')
             else:
@@ -597,7 +597,7 @@ class Visualization:
             ax1.text(0.5, 0.5, 'Error creating RGB',
                     ha='center', va='center', transform=ax1.transAxes)
             ax1.set_title('RGB Composite (Error)')
-        
+
         ax1.set_xlabel('Pixel X')
         ax1.set_ylabel('Pixel Y')
 
@@ -648,7 +648,7 @@ class Visualization:
             # Add legend
             ax1.legend(loc='upper left', fontsize=8, framealpha=0.9,
                       bbox_to_anchor=(0.02, 0.98), ncol=1)
-        
+
         # Fallback: Plot single anchor pixels from calibration_result
         elif calibration_result is not None:
             cold_x = getattr(calibration_result, 'cold_pixel_x', None)
@@ -671,7 +671,7 @@ class Visualization:
         if 'ET_daily' in cube.data:
             et_data = cube.data['ET_daily'].values
             et_masked = np.ma.masked_invalid(et_data)
-            
+
             im = ax2.imshow(et_masked, cmap=self._get_colormap('ETa'), origin='upper')
             plt.colorbar(im, ax=ax2, shrink=0.8, label='ETa (mm/day)')
             ax2.set_title('Daily ET Map')
@@ -679,20 +679,20 @@ class Visualization:
             ax2.text(0.5, 0.5, 'ET data not available',
                     ha='center', va='center', transform=ax2.transAxes)
             ax2.set_title('Daily ET Map (Not Available)')
-        
+
         ax2.set_xlabel('Pixel X')
         ax2.set_ylabel('Pixel Y')
-        
+
         # Panel 3: ETrF Map
         ax3 = axes[1, 0]
         if 'ETrF' in cube.data:
             etrf_data = cube.data['ETrF'].values
             etrf_masked = np.ma.masked_invalid(etrf_data)
-            
+
             # Get dynamic vmax from data
             valid_etrf = etrf_data[~np.isnan(etrf_data)]
             etrf_vmax = np.nanmax(valid_etrf) if len(valid_etrf) > 0 else 2.0
-            
+
             im = ax3.imshow(etrf_masked, cmap=self._get_colormap('ETrF'),
                           vmin=0, vmax=etrf_vmax, origin='upper')
             plt.colorbar(im, ax=ax3, shrink=0.8, label='ETrF')
@@ -701,10 +701,10 @@ class Visualization:
             ax3.text(0.5, 0.5, 'ETrF data not available',
                     ha='center', va='center', transform=ax3.transAxes)
             ax3.set_title('ETrF Map (Not Available)')
-        
+
         ax3.set_xlabel('Pixel X')
         ax3.set_ylabel('Pixel Y')
-        
+
         # Panel 4: Energy Balance Pie Chart
         ax4 = axes[1, 1]
         try:
@@ -713,15 +713,15 @@ class Visualization:
                 G_mean = np.nanmean(cube.data['G'].values)
                 H_mean = np.nanmean(cube.data['H'].values)
                 LE_mean = np.nanmean(cube.data['LE'].values)
-                
+
                 total = G_mean + H_mean + LE_mean
                 if total > 0:
-                    proportions = [G_mean/total * 100, H_mean/total * 100, LE_mean/total * 100]
+                    proportions = [G_mean / total * 100, H_mean / total * 100, LE_mean / total * 100]
                     labels = [f'G ({proportions[0]:.1f}%)',
                              f'H ({proportions[1]:.1f}%)',
                              f'LE ({proportions[2]:.1f}%)']
                     colors = ['#A23B72', '#F18F01', '#C73E1D']
-                    
+
                     wedges, texts, autotexts = ax4.pie(
                         [G_mean, H_mean, LE_mean],
                         labels=labels,
@@ -735,29 +735,29 @@ class Visualization:
                         ha='center', va='center', transform=ax4.transAxes)
                 ax4.set_title('Energy Balance (Not Available)')
         except Exception as e:
-            ax4.text(0.5, 0.5, f'Error: {str(e)}',
+            ax4.text(0.5, 0.5, f'Error: {e!s}',
                     ha='center', va='center', transform=ax4.transAxes)
             ax4.set_title('Energy Balance (Error)')
-        
+
         # Add scene info
         scene_id = cube.metadata.get('scene_id', 'Unknown')
         date_str = cube.acquisition_time.strftime('%Y-%m-%d') if cube.acquisition_time else 'Unknown'
-        
+
         fig.suptitle(f'METRIC ET Summary - {scene_id} ({date_str})',
                     fontsize=14, fontweight='bold')
-        
+
         plt.tight_layout()
-        
+
         return self._save_figure(fig, output_path, show)
-    
+
     def plot_quality_mask(
         self,
-        quality_data: Union[np.ndarray, xr.DataArray],
+        quality_data: np.ndarray | xr.DataArray,
         cube: DataCube,
-        output_path: Optional[str] = None,
+        output_path: str | None = None,
         show: bool = False,
         title: str = "Quality Mask"
-    ) -> Optional[str]:
+    ) -> str | None:
         """Create quality mask visualization.
         
         Args:
@@ -773,16 +773,16 @@ class Visualization:
         # Convert to numpy array
         if isinstance(quality_data, xr.DataArray):
             quality_data = quality_data.values
-        
+
         fig, ax = plt.subplots(figsize=(10, 8))
-        
+
         # Create custom colormap for quality
         colors_qa = ['red', 'yellow', 'green', 'blue', 'gray']
         cmap_qa = mcolors.ListedColormap(colors_qa)
-        
+
         # Mask invalid values
         quality_masked = np.ma.masked_invalid(quality_data)
-        
+
         im = ax.imshow(
             quality_masked,
             cmap=cmap_qa,
@@ -790,18 +790,18 @@ class Visualization:
             vmax=4,
             origin='upper'
         )
-        
+
         # Add colorbar with labels
         cbar = plt.colorbar(im, ax=ax, shrink=0.8, ticks=[0, 1, 2, 3, 4])
         cbar.set_label('Quality Class')
         cbar.ax.set_yticklabels([
             'Cloud', 'Cloud Shadow', 'Water', 'Vegetation', 'Other'
         ])
-        
+
         ax.set_title(title)
         ax.set_xlabel('Pixel X')
         ax.set_ylabel('Pixel Y')
-        
+
         plt.tight_layout()
-        
+
         return self._save_figure(fig, output_path, show)

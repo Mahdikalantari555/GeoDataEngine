@@ -31,28 +31,25 @@ Spatial Patterns:
     - Urban/built-up: ETrF ≈ 0.1-0.3
 """
 
-import numpy as np
-from typing import Dict, Optional
 from dataclasses import dataclass
 
-from data_engine.core.constants import (
-    LATENT_HEAT_VAPORIZATION,
-    SECONDS_PER_HOUR
-)
+import numpy as np
+
+from data_engine.core.constants import LATENT_HEAT_VAPORIZATION, SECONDS_PER_HOUR
 
 
 @dataclass
 class InstantaneousETConfig:
     """Configuration for instantaneous ET calculation."""
-    
+
     # Latent heat of vaporization (J/kg)
     latent_heat_vaporization: float = LATENT_HEAT_VAPORIZATION
-    
+
     # Minimum ETrF (reference ET fraction)
     min_etrf: float = 0.0
 
     # Maximum ETrF (no upper clamp by default)
-    max_etrf: Optional[float] = None
+    max_etrf: float | None = None
 
     # Minimum ET rate (mm/hr)
     min_et_rate: float = 0.0
@@ -84,10 +81,10 @@ class InstantaneousET:
         >>> et_inst = et_calc.calculate(le)
         >>> print(et_inst)  # mm/hr
     """
-    
+
     def __init__(
         self,
-        config: Optional[InstantaneousETConfig] = None
+        config: InstantaneousETConfig | None = None
     ):
         """
         Initialize InstantaneousET calculator.
@@ -104,11 +101,11 @@ class InstantaneousET:
             return np.asarray(arr.values, dtype=np.float64)
         else:
             return np.asarray(arr, dtype=np.float64)
-    
+
     def calculate_et_rate(
         self,
         le: np.ndarray,
-        temperature_k: Optional[np.ndarray] = None
+        temperature_k: np.ndarray | None = None
     ) -> np.ndarray:
         """
         Convert latent heat flux to instantaneous ET rate.
@@ -137,20 +134,20 @@ class InstantaneousET:
             lambda_v = self._latent_heat_vaporization(temperature_k)
         else:
             lambda_v = self.latent_heat
-        
+
         # ET (mm/hr) = LE (W/m²) × 3600 (s/hr) / λ (J/kg)
         # Since 1 kg/m² = 1 mm water
         et_mm_hr = le * SECONDS_PER_HOUR / lambda_v
-        
+
         # Apply physical bounds
         et_mm_hr = np.clip(
             et_mm_hr,
             self.config.min_et_rate,
             self.config.max_et_rate
         )
-        
+
         return et_mm_hr
-    
+
     def _latent_heat_vaporization(
         self,
         temperature_k: np.ndarray
@@ -168,7 +165,7 @@ class InstantaneousET:
         """
         t_celsius = temperature_k - 273.15
         return 2.501e6 - 2361.0 * t_celsius
-    
+
     def _log_etrf_statistics(
         self,
         etrf_raw: np.ndarray,
@@ -183,7 +180,7 @@ class InstantaneousET:
         """
         import logging
         logger = logging.getLogger(__name__)
-        
+
         # Raw ETrF statistics
         valid_raw = etrf_raw[~np.isnan(etrf_raw)]
         if len(valid_raw) > 0:
@@ -208,7 +205,7 @@ class InstantaneousET:
             logger.info(f"ETrF spatial variation: {unique_vals} unique values, range {max_min_diff:.6f}")
             if max_min_diff < 0.01:
                 logger.warning("ETrF has minimal spatial variation - this will cause uniform ET_daily")
-    
+
     def calculate_etrf(
         self,
         et_inst: np.ndarray,
@@ -232,14 +229,14 @@ class InstantaneousET:
         """
         et_inst = self._to_numpy(et_inst)
         etr_inst = self._to_numpy(etr_inst)
-        
+
         # Calculate ETrF with division by zero protection
         etrf = np.where(
             etr_inst > 0.01,  # Avoid division by near-zero values
             et_inst / etr_inst,
             0.0
         )
-        
+
         # Apply lower bound only (no upper clamp by default)
         etrf_clipped = np.maximum(etrf, self.config.min_etrf)
         if self.config.max_etrf is not None:
@@ -249,7 +246,7 @@ class InstantaneousET:
         self._log_etrf_statistics(etrf, etrf_clipped)
 
         return etrf_clipped
-    
+
     def calculate_etof(
         self,
         et_inst: np.ndarray,
@@ -273,26 +270,26 @@ class InstantaneousET:
         """
         et_inst = self._to_numpy(et_inst)
         eto_inst = self._to_numpy(eto_inst)
-        
+
         # Calculate EToF with division by zero protection
         etof = np.where(
             eto_inst > 0.01,
             et_inst / eto_inst,
             0.0
         )
-        
+
         # Apply physical bounds
         etof = np.clip(etof, 0.0, 1.5)
-        
+
         return etof
-    
+
     def calculate(
         self,
         le: np.ndarray,
-        etr_inst: Optional[np.ndarray] = None,
-        eto_inst: Optional[np.ndarray] = None,
-        temperature_k: Optional[np.ndarray] = None
-    ) -> Dict[str, np.ndarray]:
+        etr_inst: np.ndarray | None = None,
+        eto_inst: np.ndarray | None = None,
+        temperature_k: np.ndarray | None = None
+    ) -> dict[str, np.ndarray]:
         """
         Calculate instantaneous ET and related metrics.
         
@@ -310,25 +307,25 @@ class InstantaneousET:
                 - 'LE': Input latent heat flux (W/m²)
         """
         le = self._to_numpy(le)
-        
+
         # Calculate instantaneous ET rate
         et_inst = self.calculate_et_rate(le, temperature_k)
-        
+
         result = {
             'ET_inst': et_inst,
             'LE': le
         }
-        
+
         # Calculate ETrF if reference ET available
         if etr_inst is not None:
             result['ETrF'] = self.calculate_etrf(et_inst, etr_inst)
-        
+
         # Calculate EToF if reference ET available
         if eto_inst is not None:
             result['EToF'] = self.calculate_etof(et_inst, eto_inst)
-        
+
         return result
-    
+
     def et0_to_etr(
         self,
         et0: np.ndarray
@@ -348,11 +345,11 @@ class InstantaneousET:
             Reference ET for alfalfa (same units as input)
         """
         return et0 * self.config.etr_factor
-    
+
     def spatial_pattern_analysis(
         self,
         etrf: np.ndarray
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         """
         Analyze spatial pattern of ETrF values.
         
@@ -363,13 +360,13 @@ class InstantaneousET:
             Dictionary with spatial pattern classification
         """
         etrf = self._to_numpy(etrf)
-        
+
         # Calculate statistics
         mean_etrf = np.nanmean(etrf)
         std_etrf = np.nanstd(etrf)
         min_etrf = np.nanmin(etrf)
         max_etrf = np.nanmax(etrf)
-        
+
         # Classify dominant land cover
         if mean_etrf >= 0.8:
             pattern = "Well-watered vegetation dominant"
@@ -379,7 +376,7 @@ class InstantaneousET:
             pattern = "Stressed vegetation or bare soil"
         else:
             pattern = "Dry/hot conditions or urban areas"
-        
+
         return {
             'mean_etrf': str(mean_etrf),
             'std_etrf': str(std_etrf),
@@ -387,7 +384,7 @@ class InstantaneousET:
             'max_etrf': str(max_etrf),
             'dominant_pattern': pattern
         }
-    
+
     def compute(self, cube):
         """
         Compute instantaneous ET and add to DataCube.
@@ -398,7 +395,6 @@ class InstantaneousET:
         Returns:
             DataCube with added ET_inst, ETrF, EToF
         """
-        from ..core.datacube import DataCube
 
         # Get required inputs
         le = cube.get("LE")
@@ -428,9 +424,9 @@ class InstantaneousET:
     def __call__(
         self,
         le: np.ndarray,
-        etr_inst: Optional[np.ndarray] = None,
+        etr_inst: np.ndarray | None = None,
         **kwargs
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Convenience method to calculate instantaneous ET.
         """
@@ -439,7 +435,7 @@ class InstantaneousET:
 
 def create_instantaneous_et(
     min_etrf: float = 0.0,
-    max_etrf: Optional[float] = None,
+    max_etrf: float | None = None,
     max_et_rate: float = 2.5,
     use_temperature_lambda: bool = False,
     **kwargs

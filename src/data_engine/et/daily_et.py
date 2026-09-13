@@ -27,37 +27,34 @@ Physical Constraints:
     - daylight_fraction = 1.0 (no daylight reduction)
 """
 
-import numpy as np
-from typing import Dict, Optional
 from dataclasses import dataclass
 
-from data_engine.core.constants import (
-    HOURS_PER_DAY,
-    SECONDS_PER_HOUR
-)
+import numpy as np
+
+from data_engine.core.constants import SECONDS_PER_HOUR
 
 
 @dataclass
 class DailyETConfig:
     """Configuration for daily ET calculation."""
-    
+
     # Minimum daily ET (mm/day)
     min_et_daily: float = 0.0
-    
+
     # Maximum daily ET (mm/day)
     max_et_daily: float = 30.0
-    
+
     # Time factor for ETr extrapolation (default = 24)
     time_factor: float = 24.0
-    
+
     # Daylight fraction - always 1.0 (no reduction)
     daylight_fraction: float = 1.0
-    
+
     # Minimum valid ETrF
     min_etrf: float = 0.0
 
     # Maximum valid ETrF (no upper clamp by default)
-    max_etrf: Optional[float] = None
+    max_etrf: float | None = None
 
     # Time of day for Landsat overpass (hours, 0-23)
     overpass_time: float = 10.5
@@ -80,10 +77,10 @@ class DailyET:
         >>> etr_daily = 5.0  # mm/day
         >>> et_daily = daily_et.calculate(etrf, etr_daily)
     """
-    
+
     def __init__(
         self,
-        config: Optional[DailyETConfig] = None
+        config: DailyETConfig | None = None
     ):
         """
         Initialize DailyET calculator.
@@ -99,7 +96,7 @@ class DailyET:
             return np.asarray(arr.values, dtype=np.float64)
         else:
             return np.asarray(arr, dtype=np.float64)
-    
+
     def calculate_daily_et(
         self,
         etrf: np.ndarray,
@@ -119,19 +116,19 @@ class DailyET:
         """
         etrf = self._to_numpy(etrf)
         etr_daily = self._to_numpy(etr_daily)
-        
+
         # Calculate daily ET
         et_daily = etrf * etr_daily
-        
+
         # Apply physical bounds
         et_daily = np.clip(
             et_daily,
             self.config.min_et_daily,
             self.config.max_et_daily
         )
-        
+
         return et_daily
-    
+
     def calculate_with_daylight_fraction(
         self,
         etrf: np.ndarray,
@@ -159,23 +156,23 @@ class DailyET:
         import logging
         logger = logging.getLogger(__name__)
         logger.warning("calculate_with_daylight_fraction is DEPRECATED - using standard formula")
-        
+
         # Use standard formula without daylight fraction
         # ET_daily = ETrF × ETr_daily (not multiplied by daylight_fraction)
         etrf = self._to_numpy(etrf)
         etr_daily = self._to_numpy(etr_daily)
-        
+
         et_daily = etrf * etr_daily
-        
+
         # Apply physical bounds
         et_daily = np.clip(
             et_daily,
             self.config.min_et_daily,
             self.config.max_et_daily
         )
-        
+
         return et_daily
-    
+
     def estimate_etr_daily_from_inst(
         self,
         etr_inst: np.ndarray
@@ -195,7 +192,7 @@ class DailyET:
         """
         etr_inst = self._to_numpy(etr_inst)
         return etr_inst * self.config.time_factor
-    
+
     def _log_daily_et_statistics(
         self,
         etrf: np.ndarray,
@@ -254,7 +251,7 @@ class DailyET:
                 logger.warning("  This indicates ETrF has no spatial variation or calculation error")
             else:
                 logger.info(f"  OK: ET_daily has spatial variation (Max-Mean = {max_mean_diff:.6f})")
-    
+
     def scale_instantaneous_to_daily(
         self,
         et_inst: np.ndarray,
@@ -280,33 +277,33 @@ class DailyET:
         et_inst = self._to_numpy(et_inst)
         etr_inst = self._to_numpy(etr_inst)
         etr_daily = self._to_numpy(etr_daily)
-        
+
         # Calculate scaling factor
         scaling_factor = np.where(
             etr_inst > 0.01,
             etr_daily / etr_inst,
             0.0
         )
-        
+
         # Calculate daily ET
         et_daily = et_inst * scaling_factor
-        
+
         # Apply physical bounds
         et_daily = np.clip(
             et_daily,
             self.config.min_et_daily,
             self.config.max_et_daily
         )
-        
+
         return et_daily
-    
+
     def calculate(
         self,
         etrf: np.ndarray,
         etr_daily: np.ndarray,
-        use_daylight_fraction: Optional[bool] = None,
-        daylight_fraction: Optional[float] = None
-    ) -> Dict[str, np.ndarray]:
+        use_daylight_fraction: bool | None = None,
+        daylight_fraction: float | None = None
+    ) -> dict[str, np.ndarray]:
         """
         Calculate daily ET from ETrF and daily reference ET.
 
@@ -349,14 +346,14 @@ class DailyET:
             'ETrF': etrf,
             'ETr_daily': etr_daily
         }
-    
+
     def calculate_full(
         self,
         et_inst: np.ndarray,
         etr_inst: np.ndarray,
         etr_daily: np.ndarray,
-        et0_daily: Optional[np.ndarray] = None
-    ) -> Dict[str, np.ndarray]:
+        et0_daily: np.ndarray | None = None
+    ) -> dict[str, np.ndarray]:
         """
         Calculate daily ET with all available information.
         
@@ -372,7 +369,7 @@ class DailyET:
         et_inst = self._to_numpy(et_inst)
         etr_inst = self._to_numpy(etr_inst)
         etr_daily = self._to_numpy(etr_daily)
-        
+
         # Calculate ETrF from instantaneous values (no upper clamp)
         etrf = np.where(
             etr_inst > 0.01,
@@ -393,7 +390,7 @@ class DailyET:
             'ETr_inst': etr_inst,
             'ETr_daily': etr_daily
         }
-        
+
         # Add grass reference ET if available
         if et0_daily is not None:
             et0_daily = self._to_numpy(et0_daily)
@@ -403,15 +400,15 @@ class DailyET:
                 et_daily / et0_daily,
                 0.0
             )
-        
+
         return result
-    
+
     def calculate_et_from_le(
         self,
         le: np.ndarray,
         etr_daily: np.ndarray,
         lambda_vaporization: float = 2.45e6
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Calculate daily ET directly from latent heat flux.
         
@@ -427,13 +424,13 @@ class DailyET:
         """
         le = self._to_numpy(le)
         etr_daily = self._to_numpy(etr_daily)
-        
+
         # Convert LE to instantaneous ET (mm/hr)
         et_inst = le * SECONDS_PER_HOUR / lambda_vaporization
-        
+
         # Estimate instantaneous ETr from daily ETr
         etr_inst = etr_daily / self.config.time_factor
-        
+
         # Calculate ETrF (no upper clamp)
         etrf = np.where(
             etr_inst > 0.01,
@@ -446,7 +443,7 @@ class DailyET:
 
         # Calculate daily ET
         et_daily = self.calculate_daily_et(etrf, etr_daily)
-        
+
         return {
             'LE': le,
             'ET_inst': et_inst,
@@ -455,7 +452,7 @@ class DailyET:
             'ETr_inst': etr_inst,
             'ETr_daily': etr_daily
         }
-    
+
     def monthly_total(
         self,
         et_daily: np.ndarray,
@@ -473,7 +470,7 @@ class DailyET:
         """
         et_daily = self._to_numpy(et_daily)
         return et_daily * days_in_month
-    
+
     def seasonal_total(
         self,
         et_daily: np.ndarray,
@@ -491,7 +488,7 @@ class DailyET:
         """
         et_daily = self._to_numpy(et_daily)
         return et_daily * days_in_season
-    
+
     def compute(self, cube):
         """
         Compute daily ET and add to DataCube.
@@ -503,7 +500,6 @@ class DailyET:
             DataCube with added ET_daily
         """
         import logging
-        from ..core.datacube import DataCube
 
         logger = logging.getLogger(__name__)
 
@@ -582,7 +578,7 @@ class DailyET:
         etrf: np.ndarray,
         etr_daily: np.ndarray,
         **kwargs
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Convenience method to calculate daily ET.
         """

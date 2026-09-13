@@ -1,8 +1,8 @@
 """Emissivity calculations for METRIC ETa model."""
 
+
 import numpy as np
 import xarray as xr
-from typing import Optional
 
 from ..core.datacube import DataCube
 
@@ -23,7 +23,7 @@ class EmissivityCalculator:
         ndvi_min: Minimum NDVI for bare soil
         ndvi_max: Maximum NDVI for full vegetation
     """
-    
+
     # Default emissivity values for different land cover types
     EMISSIVITY_LAND_COVER = {
         'water': 0.985,
@@ -36,7 +36,7 @@ class EmissivityCalculator:
         'snow': 0.990,
         'default': 0.960
     }
-    
+
     def __init__(
         self,
         ndvi_min: float = 0.0,
@@ -54,7 +54,7 @@ class EmissivityCalculator:
         self.ndvi_min = ndvi_min
         self.ndvi_max = ndvi_max
         self.use_pv_method = use_pv_method
-    
+
     def compute(self, cube: DataCube) -> DataCube:
         """
         Compute emissivity and add to DataCube.
@@ -70,13 +70,13 @@ class EmissivityCalculator:
         """
         emissivity = self.compute_emissivity(cube)
         cube.add("emissivity", emissivity)
-        
+
         # Also add thermal emissivity correction factor
         thermal_corr = self.compute_thermal_emissivity_correction(cube)
         cube.add("emissivity_thermal_corr", thermal_corr)
-        
+
         return cube
-    
+
     def _get_nodata_mask(self, cube: DataCube) -> xr.DataArray:
         """
         Get nodata mask from available QA bands.
@@ -89,20 +89,20 @@ class EmissivityCalculator:
         """
         if "qa_pixel" in cube.bands():
             qa = cube.get("qa_pixel")
-            
+
             # Handle NaN values in QA band (from cloud masking)
             if np.any(np.isnan(qa.values)):
                 # If QA band has NaN values, use the NaN mask directly
                 # This means cloud masking has already been applied
                 valid_mask = ~np.isnan(qa.values)
                 return xr.DataArray(valid_mask, dims=['y', 'x'])
-            
+
             # Original logic for non-NaN QA values
             # Ensure proper integer type for bit operations
             qa_values = qa.values
             if qa_values.dtype.kind not in ['u', 'i']:
                 qa_values = qa_values.astype(np.uint32)
-            
+
             # Cloud masks (bits 1-3 for Landsat 8/9)
             cloud_mask = ~(
                 ((qa_values >> 1) & 1).astype(bool) |
@@ -110,17 +110,17 @@ class EmissivityCalculator:
                 ((qa_values >> 3) & 1).astype(bool)
             )
             return xr.DataArray(cloud_mask, dims=['y', 'x'])
-        
+
         first_band = next(iter(cube.data.values()))
         return xr.DataArray(
             np.ones(first_band.shape, dtype=bool),
             dims=['y', 'x']
         )
-    
+
     def compute_emissivity(
         self,
         cube: DataCube,
-        ndvi: Optional[xr.DataArray] = None
+        ndvi: xr.DataArray | None = None
     ) -> xr.DataArray:
         """
         Compute surface emissivity using NDVI-based method.
@@ -143,10 +143,10 @@ class EmissivityCalculator:
                 raise ValueError("NDVI required for emissivity calculation. "
                                "Compute NDVI first or provide as argument.")
             ndvi = cube.get("ndvi")
-        
+
         # Get nodata mask
         valid_mask = self._get_nodata_mask(cube)
-        
+
         # Compute emissivity using piecewise function
         emissivity = xr.where(
             ndvi < 0,
@@ -161,13 +161,13 @@ class EmissivityCalculator:
                 )
             )
         )
-        
+
         # Apply nodata mask
         emissivity = emissivity.where(valid_mask, np.nan)
-        
+
         # Clamp to valid range
         emissivity = emissivity.clip(0.90, 1.0)
-        
+
         emissivity.name = "emissivity"
         emissivity.attrs = {
             'long_name': 'Surface Emissivity (Thermal)',
@@ -175,13 +175,13 @@ class EmissivityCalculator:
             'range': '[0.90, 1.0]',
             'method': 'NDVI-based'
         }
-        
+
         return emissivity
-    
+
     def compute_emissivity_pv(
         self,
         cube: DataCube,
-        ndvi: Optional[xr.DataArray] = None
+        ndvi: xr.DataArray | None = None
     ) -> xr.DataArray:
         """
         Compute emissivity using proportion of vegetation (Pv).
@@ -201,14 +201,14 @@ class EmissivityCalculator:
             if "ndvi" not in cube.bands():
                 raise ValueError("NDVI required for Pv-based emissivity.")
             ndvi = cube.get("ndvi")
-        
+
         # Get nodata mask
         valid_mask = self._get_nodata_mask(cube)
-        
+
         # Compute proportion of vegetation
         pv = ((ndvi - self.ndvi_min) / (self.ndvi_max - self.ndvi_min)) ** 2
         pv = pv.clip(0.001, 1.0)  # Avoid log(0)
-        
+
         # Compute emissivity using Pv relationship
         with np.errstate(invalid='ignore'):
             emissivity = xr.where(
@@ -216,13 +216,13 @@ class EmissivityCalculator:
                 0.973 + 0.047 * np.log(pv),
                 0.960  # Bare soil fallback
             )
-        
+
         # Apply nodata mask
         emissivity = emissivity.where(valid_mask, np.nan)
-        
+
         # Clamp to valid range
         emissivity = emissivity.clip(0.90, 1.0)
-        
+
         emissivity.name = "emissivity_pv"
         emissivity.attrs = {
             'long_name': 'Surface Emissivity (Pv-based)',
@@ -230,13 +230,13 @@ class EmissivityCalculator:
             'range': '[0.90, 1.0]',
             'method': 'Proportion of Vegetation'
         }
-        
+
         return emissivity
-    
+
     def compute_thermal_emissivity_correction(
         self,
         cube: DataCube,
-        emissivity: Optional[xr.DataArray] = None
+        emissivity: xr.DataArray | None = None
     ) -> xr.DataArray:
         """
         Compute thermal emissivity correction factor for Stefan-Boltzmann law.
@@ -259,23 +259,23 @@ class EmissivityCalculator:
                 emissivity = self.compute_emissivity(cube)
             else:
                 emissivity = cube.get("emissivity")
-        
+
         # Compute correction factor
         corr = 1.0 - emissivity
-        
+
         corr.name = "emissivity_thermal_corr"
         corr.attrs = {
             'long_name': 'Thermal Emissivity Correction Factor',
             'units': 'dimensionless',
             'definition': '1 - emissivity'
         }
-        
+
         return corr
-    
+
     def compute_narrowband_to_broadband_emissivity(
         self,
         cube: DataCube,
-        thermal_band: Optional[xr.DataArray] = None
+        thermal_band: xr.DataArray | None = None
     ) -> xr.DataArray:
         """
         Convert narrowband emissivity to broadband emissivity.
@@ -295,7 +295,7 @@ class EmissivityCalculator:
                 raise ValueError("Thermal band (lwir11) required.")
             # Use raw thermal band values as proxy for emissivity
             thermal_band = cube.get("lwir11").astype(float)
-        
+
         # Simple conversion: normalize to emissivity range
         # This is a placeholder; actual methods use spectral libraries
         emissivity = xr.where(
@@ -303,9 +303,9 @@ class EmissivityCalculator:
             0.95 + 0.004 * (thermal_band / thermal_band.max()),
             0.96
         )
-        
+
         emissivity = emissivity.clip(0.90, 1.0)
-        
+
         emissivity.name = "emissivity_broadband"
         emissivity.attrs = {
             'long_name': 'Broadband Emissivity',
@@ -313,13 +313,13 @@ class EmissivityCalculator:
             'range': '[0.90, 1.0]',
             'method': 'Narrowband to Broadband conversion'
         }
-        
+
         return emissivity
-    
+
     def compute_emissivity_from_land_cover(
         self,
         cube: DataCube,
-        land_cover: Optional[xr.DataArray] = None
+        land_cover: xr.DataArray | None = None
     ) -> xr.DataArray:
         """
         Compute emissivity based on land cover classification.
@@ -333,22 +333,22 @@ class EmissivityCalculator:
         """
         # Default emissivity map for common land cover types
         lc_emissivity = self.EMISSIVITY_LAND_COVER
-        
+
         # Create emissivity array from land cover (placeholder implementation)
         # In practice, this would use an actual land cover classification
         if land_cover is None:
             # Fall back to NDVI-based method
             return self.compute_emissivity(cube)
-        
+
         emissivity = land_cover * 0 + lc_emissivity['default']
-        
+
         emissivity.name = "emissivity_lc"
         emissivity.attrs = {
             'long_name': 'Surface Emissivity (Land Cover Based)',
             'units': 'dimensionless',
             'method': 'Land Cover Classification'
         }
-        
+
         return emissivity
 
 
@@ -356,4 +356,4 @@ class EmissivityCalculator:
 Emissivity = EmissivityCalculator
 
 
-__all__ = ['EmissivityCalculator', 'Emissivity']
+__all__ = ['Emissivity', 'EmissivityCalculator']

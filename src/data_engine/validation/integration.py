@@ -10,18 +10,21 @@ without requiring major code changes.
 
 import os
 import sys
+from pathlib import Path
+from typing import Any
+
 import numpy as np
 import xarray as xr
-from typing import Dict, Any, Optional, List
-from pathlib import Path
-from datetime import datetime
-import logging
 
 # Add data_engine to path for imports
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
 
-from .comprehensive_validation import ComprehensiveMETRICValidator, ValidationResult, QualityFlag
 from ..utils.logger import Logger
+from .comprehensive_validation import (
+    ComprehensiveMETRICValidator,
+    QualityFlag,
+    ValidationResult,
+)
 
 
 class METRICValidationIntegrator:
@@ -31,8 +34,8 @@ class METRICValidationIntegrator:
     This class provides methods to integrate validation into the existing
     download_and_process_debal.py workflow with minimal code changes.
     """
-    
-    def __init__(self, scene_id: Optional[str] = None, log_level: str = "INFO"):
+
+    def __init__(self, scene_id: str | None = None, log_level: str = "INFO"):
         """
         Initialize validation integrator.
         
@@ -42,21 +45,21 @@ class METRICValidationIntegrator:
         """
         self.scene_id = scene_id
         self.logger = Logger.get_logger(__name__)
-        
+
         # Configure logging level
         Logger.setup(name="metric_validation", level=log_level)
-        
+
         # Initialize validator
         self.validator = ComprehensiveMETRICValidator(scene_id=scene_id)
-        
+
         # Track validation results
-        self.validation_results: List[ValidationResult] = []
-        
+        self.validation_results: list[ValidationResult] = []
+
     def validate_after_pipeline_execution(
         self,
-        results: Dict[str, xr.DataArray],
+        results: dict[str, xr.DataArray],
         cube: Any,
-        calibration_data: Optional[Dict] = None,
+        calibration_data: dict | None = None,
         output_dir: str = "validation_output"
     ) -> ValidationResult:
         """
@@ -75,7 +78,7 @@ class METRICValidationIntegrator:
             ValidationResult with complete assessment
         """
         self.logger.info("Starting post-pipeline validation")
-        
+
         try:
             # Run comprehensive validation
             validation_result = self.validator.validate_complete_workflow(
@@ -83,31 +86,31 @@ class METRICValidationIntegrator:
                 results=results,
                 calibration_data=calibration_data
             )
-            
+
             # Store results
             self.validation_results.append(validation_result)
-            
+
             # Save validation report
             report_file = self.validator.save_validation_report(
                 validation_result, output_dir
             )
-            
+
             # Print summary to console
             self.validator.print_validation_summary(validation_result)
-            
+
             self.logger.info(f"Validation completed. Report saved to: {report_file}")
             return validation_result
-            
+
         except Exception as e:
             self.logger.error(f"Validation failed: {e}")
             raise
-            
+
     def validate_step_by_step(
         self,
         step_name: str,
         cube: Any,
-        results: Dict[str, xr.DataArray],
-        step_data: Dict[str, Any]
+        results: dict[str, xr.DataArray],
+        step_data: dict[str, Any]
     ) -> bool:
         """
         Validate a specific step in the pipeline.
@@ -125,7 +128,7 @@ class METRICValidationIntegrator:
             True if validation passed, False otherwise
         """
         self.logger.info(f"Validating step: {step_name}")
-        
+
         try:
             if step_name == "surface_properties":
                 return self._validate_surface_properties_step(cube, results, step_data)
@@ -138,80 +141,80 @@ class METRICValidationIntegrator:
             else:
                 self.logger.warning(f"No specific validation for step: {step_name}")
                 return True
-                
+
         except Exception as e:
             self.logger.error(f"Step validation failed for {step_name}: {e}")
             return False
-            
-    def _validate_surface_properties_step(self, cube: Any, results: Dict[str, xr.DataArray], step_data: Dict[str, Any]) -> bool:
+
+    def _validate_surface_properties_step(self, cube: Any, results: dict[str, xr.DataArray], step_data: dict[str, Any]) -> bool:
         """Validate surface properties calculation step."""
         issues_found = False
-        
+
         # NDVI validation
         if cube.get("ndvi") is not None:
             ndvi = cube.get("ndvi").values
             valid_ndvi = ndvi[(ndvi >= -1.0) & (ndvi <= 1.0)]
             if len(valid_ndvi) < len(ndvi) * 0.8:
-                self.logger.warning(f"Only {len(valid_ndvi)/len(ndvi)*100:.1f}% of NDVI values are valid")
+                self.logger.warning(f"Only {len(valid_ndvi) / len(ndvi) * 100:.1f}% of NDVI values are valid")
                 issues_found = True
             else:
                 self.logger.info(f"NDVI validation passed: {len(valid_ndvi)} valid pixels")
-                
+
         # Albedo validation
         if cube.get("albedo") is not None:
             albedo = cube.get("albedo").values
             valid_albedo = albedo[(albedo >= 0.0) & (albedo <= 1.0)]
             if len(valid_albedo) < len(albedo) * 0.9:
-                self.logger.warning(f"Only {len(valid_albedo)/len(albedo)*100:.1f}% of albedo values are valid")
+                self.logger.warning(f"Only {len(valid_albedo) / len(albedo) * 100:.1f}% of albedo values are valid")
                 issues_found = True
             else:
                 self.logger.info(f"Albedo validation passed: {len(valid_albedo)} valid pixels")
-                
+
         return not issues_found
-        
-    def _validate_radiation_step(self, cube: Any, results: Dict[str, xr.DataArray], step_data: Dict[str, Any]) -> bool:
+
+    def _validate_radiation_step(self, cube: Any, results: dict[str, xr.DataArray], step_data: dict[str, Any]) -> bool:
         """Validate radiation balance step."""
         issues_found = False
-        
+
         # Net radiation validation
         if cube.get("R_n") is not None:
             rn = cube.get("R_n").values
             valid_rn = rn[(rn >= 0) & (rn <= 1000)]
             if len(valid_rn) < len(rn) * 0.8:
-                self.logger.warning(f"Only {len(valid_rn)/len(rn)*100:.1f}% of net radiation values are in expected range")
+                self.logger.warning(f"Only {len(valid_rn) / len(rn) * 100:.1f}% of net radiation values are in expected range")
                 issues_found = True
             else:
                 self.logger.info(f"Net radiation validation passed: {len(valid_rn)} valid pixels")
-                
+
         return not issues_found
-        
-    def _validate_energy_balance_step(self, cube: Any, results: Dict[str, xr.DataArray], step_data: Dict[str, Any]) -> bool:
+
+    def _validate_energy_balance_step(self, cube: Any, results: dict[str, xr.DataArray], step_data: dict[str, Any]) -> bool:
         """Validate energy balance step."""
         issues_found = False
-        
+
         # Check energy balance components
         if all(v is not None for v in [cube.get("R_n"), cube.get("G"), cube.get("H"), cube.get("LE")]):
             rn = cube.get("R_n").values
             g = cube.get("G").values
             h = cube.get("H").values
             le = cube.get("LE").values
-            
+
             # Check for negative available energy
             available_energy = rn - g
             negative_ae_count = np.sum(available_energy < 0)
-            
+
             if negative_ae_count > 0:
                 self.logger.error(f"Found {negative_ae_count} pixels with negative available energy (Rn - G < 0)")
                 issues_found = True
             else:
                 self.logger.info("Energy balance step validation passed")
-                
+
         return not issues_found
-        
-    def _validate_et_step(self, cube: Any, results: Dict[str, xr.DataArray], step_data: Dict[str, Any]) -> bool:
+
+    def _validate_et_step(self, cube: Any, results: dict[str, xr.DataArray], step_data: dict[str, Any]) -> bool:
         """Validate ET calculation step."""
         issues_found = False
-        
+
         # ETrF validation
         if "ETrF" in results and results["ETrF"] is not None:
             etrf = results["ETrF"].values
@@ -222,7 +225,7 @@ class METRICValidationIntegrator:
                 issues_found = True
             else:
                 self.logger.info(f"ETrF validation passed: {len(valid_etrf)} valid pixels")
-                
+
         # ET daily validation
         if "ET_daily" in results and results["ET_daily"] is not None:
             et_daily = results["ET_daily"].values
@@ -233,18 +236,18 @@ class METRICValidationIntegrator:
                 issues_found = True
             else:
                 self.logger.info(f"ET_daily validation passed: {len(valid_et_daily)} valid pixels")
-                
+
         return not issues_found
-        
-    def get_validation_summary(self) -> Dict[str, Any]:
+
+    def get_validation_summary(self) -> dict[str, Any]:
         """Get summary of all validation results."""
         if not self.validation_results:
             return {"message": "No validation results available"}
-            
+
         # Aggregate results
         total_validations = len(self.validation_results)
         passed_validations = sum(1 for r in self.validation_results if r.overall_quality_flag in [QualityFlag.EXCELLENT, QualityFlag.GOOD])
-        
+
         return {
             "total_validations": total_validations,
             "passed_validations": passed_validations,
@@ -262,7 +265,7 @@ def add_validation_to_download_process():
     This function provides the code modifications needed to integrate
     the validation framework into the existing workflow.
     """
-    
+
     integration_code = '''
 # ============================================================================
 # VALIDATION FRAMEWORK INTEGRATION
@@ -336,7 +339,7 @@ def main():
 
     return 0
 '''
-    
+
     return integration_code
 
 
@@ -347,7 +350,7 @@ def create_validation_config():
     Returns:
         Dictionary with validation configuration settings
     """
-    
+
     config = {
         "validation": {
             "enabled": True,
@@ -387,11 +390,11 @@ def create_validation_config():
             }
         }
     }
-    
+
     return config
 
 
-def save_validation_config(config: Dict[str, Any], output_path: str) -> str:
+def save_validation_config(config: dict[str, Any], output_path: str) -> str:
     """
     Save validation configuration to file.
     
@@ -403,19 +406,19 @@ def save_validation_config(config: Dict[str, Any], output_path: str) -> str:
         Path to saved configuration file
     """
     import json
-    
+
     config_path = Path(output_path)
     config_path.parent.mkdir(parents=True, exist_ok=True)
-    
+
     with open(config_path, 'w') as f:
         json.dump(config, f, indent=2)
-        
+
     return str(config_path)
 
 
 def print_integration_instructions():
     """Print instructions for integrating validation framework."""
-    
+
     instructions = """
 METRIC ET VALIDATION FRAMEWORK INTEGRATION INSTRUCTIONS
 ======================================================
@@ -476,17 +479,17 @@ VALIDATION CHECKS:
 
 For detailed implementation, see the integration code provided by add_validation_to_download_process()
 """
-    
+
     print(instructions)
 
 
 # Example usage function
 def example_integration():
     """Example of how to integrate validation into existing workflow."""
-    
+
     # Create example validation integrator
     integrator = METRICValidationIntegrator(scene_id="20251221")
-    
+
     print("Example validation integration:")
     print("1. Initialize: integrator = METRICValidationIntegrator(scene_id='20251221')")
     print("2. After pipeline: validation_result = integrator.validate_after_pipeline_execution(...)")
@@ -496,17 +499,17 @@ def example_integration():
     print("- Log level: DEBUG, INFO, WARNING, ERROR")
     print("- Output directory: Custom validation report location")
     print("- Quality thresholds: Configurable validation tolerances")
-    
+
     return integrator
 
 
 if __name__ == "__main__":
     # Print integration instructions
     print_integration_instructions()
-    
+
     # Show example integration
     example_integration()
-    
+
     # Create and save default configuration
     config = create_validation_config()
     config_path = save_validation_config(config, "validation_config.json")

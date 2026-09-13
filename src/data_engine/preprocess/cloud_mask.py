@@ -4,7 +4,6 @@ This module provides cloud and cloud shadow detection functionality
 using the Landsat QA pixel band.
 """
 
-from typing import Optional, Tuple, Union
 
 import numpy as np
 import xarray as xr
@@ -14,7 +13,6 @@ from ..core.datacube import DataCube
 
 class CloudMaskerError(Exception):
     """Base exception for CloudMasker errors."""
-    pass
 
 
 class CloudMasker:
@@ -33,7 +31,7 @@ class CloudMasker:
         >>> mask = masker.create_mask(cube.get('qa_pixel'))
         >>> clear_cube = masker.apply_mask(cube, mask)
     """
-    
+
     # QA pixel bit flags for Landsat 8/9 Collection 2
     # See: https://www.usgs.gov/landsat-missions/landsat-collection-2-level-2-quality-assessment-band
     QA_DILATED_CLOUD_BIT = 1
@@ -42,13 +40,13 @@ class CloudMasker:
     QA_SNOW_BIT = 5
     QA_CLEAR_BIT = 6
     WATER_BIT = 7
-    
+
     # Cloud confidence levels (bits 8-9)
     CONFIDENCE_LOW = 0
     CONFIDENCE_MEDIUM = 1
     CONFIDENCE_HIGH = 2
     CONFIDENCE_LCD = 3  # Low confidence cloud detection
-    
+
     def __init__(
         self,
         cloud_confidence_threshold: int = CONFIDENCE_MEDIUM,
@@ -70,11 +68,11 @@ class CloudMasker:
         self.dilate_pixels = dilate_pixels
         self.include_snow = include_snow
         self.include_water = include_water
-    
+
     def create_mask(
         self,
-        qa_pixel: Union[xr.DataArray, np.ndarray],
-        confidence_override: Optional[int] = None,
+        qa_pixel: xr.DataArray | np.ndarray,
+        confidence_override: int | None = None,
     ) -> xr.DataArray:
         """
         Create a cloud mask from the QA pixel band.
@@ -91,7 +89,7 @@ class CloudMasker:
         """
         if qa_pixel is None:
             raise CloudMaskerError("QA pixel band is required")
-        
+
         # Convert to numpy array with proper dtype
         if isinstance(qa_pixel, xr.DataArray):
             qa_values = qa_pixel.values
@@ -107,31 +105,31 @@ class CloudMasker:
                 qa_values = qa_values.astype(np.uint32)
             coords = None
             dims = None
-        
+
         # Initialize mask as clear (True)
         mask = np.ones(qa_values.shape, dtype=bool)
-        
+
         # Get confidence level from bits 8-9
         confidence = (qa_values >> 8) & 0b11
-        
+
         # Check for dilated cloud (bit 1)
         dilated_cloud = (qa_values >> self.QA_DILATED_CLOUD_BIT) & 1
-        
+
         # Check for cloud (bit 3)
         cloud = (qa_values >> self.QA_CLOUD_BIT) & 1
-        
+
         # Check for cloud shadow (bit 4)
         cloud_shadow = (qa_values >> self.QA_CLOUD_SHADOW_BIT) & 1
-        
+
         # Check for snow (bit 5)
         snow = (qa_values >> self.QA_SNOW_BIT) & 1
-        
+
         # Check for water (bit 7)
         water = (qa_values >> self.WATER_BIT) & 1
-        
+
         # Determine cloud confidence threshold
         threshold = confidence_override if confidence_override is not None else self.cloud_confidence_threshold
-        
+
         # Apply cloud detection
         # Check for actual cloud presence based on confidence and cloud bits
         if threshold == self.CONFIDENCE_HIGH:
@@ -146,15 +144,15 @@ class CloudMasker:
         else:
             # LCD threshold - use cloud bit directly
             is_cloud = cloud == 1
-        
+
         # Mark clouds and shadows as not clear
         mask = mask & ~is_cloud
         mask = mask & (cloud_shadow == 0)
-        
+
         # Handle snow
         if not self.include_snow:
             mask = mask & (snow == 0)
-        
+
         # Handle water
         if self.include_water:
             # Water is clear
@@ -162,19 +160,19 @@ class CloudMasker:
         else:
             # Water is masked
             mask = mask & (water == 0)
-        
+
         # Dilate cloud mask to catch edge pixels
         if self.dilate_pixels > 0:
             mask = self._dilate_mask(mask, self.dilate_pixels)
-        
+
         # Create output DataArray
         if coords is not None:
             result = xr.DataArray(mask, coords=coords, dims=dims)
         else:
             result = xr.DataArray(mask)
-        
+
         return result
-    
+
     def apply_mask(
         self,
         cube: DataCube,
@@ -200,14 +198,14 @@ class CloudMasker:
                 f"Mask shape {mask.shape} doesn't match cube shape "
                 f"({cube.y_dim}, {cube.x_dim})"
             )
-        
+
         # Create new DataCube
         masked_cube = DataCube()
         masked_cube.crs = cube.crs
         masked_cube.transform = cube.transform
         masked_cube.acquisition_time = cube.acquisition_time
         masked_cube.metadata = cube.metadata.copy()
-        
+
         # Apply mask to each band
         for band_name, band_data in cube.data.items():
             if isinstance(band_data, xr.DataArray):
@@ -216,9 +214,9 @@ class CloudMasker:
                 masked_cube.add(band_name, masked_data)
             else:
                 masked_cube.add(band_name, band_data)
-        
+
         return masked_cube
-    
+
     def compute_cloud_coverage(self, cube: DataCube) -> float:
         """
         Compute the percentage of cloud cover in a DataCube.
@@ -235,18 +233,18 @@ class CloudMasker:
         qa_pixel = cube.get('qa_pixel')
         if qa_pixel is None:
             raise CloudMaskerError("qa_pixel band not found in DataCube")
-        
+
         mask = self.create_mask(qa_pixel)
-        
+
         # Calculate percentage of clear pixels
         total_pixels = mask.size
         clear_pixels = np.sum(mask)
         cloud_pixels = total_pixels - clear_pixels
-        
+
         coverage = (cloud_pixels / total_pixels) * 100
-        
+
         return float(coverage)
-    
+
     def _dilate_mask(self, mask: np.ndarray, iterations: int) -> np.ndarray:
         """
         Dilate the cloud mask using binary dilation.
@@ -266,25 +264,25 @@ class CloudMasker:
                 """Manual binary dilation using max filter."""
                 kernel_size = 3
                 padded = np.pad(arr, ((1, 1), (1, 1)), mode='constant', constant_values=False)
-                
+
                 for _ in range(iterations):
                     result = np.zeros_like(padded)
                     for i in range(1, padded.shape[0] - 1):
                         for j in range(1, padded.shape[1] - 1):
                             # Check 3x3 neighborhood
-                            if np.any(padded[i-1:i+2, j-1:j+2]):
+                            if np.any(padded[i - 1:i + 2, j - 1:j + 2]):
                                 result[i, j] = True
                     padded = result
-                
+
                 return padded[1:-1, 1:-1]
-            
+
             return manual_dilation(mask, iterations)
-        
+
         structure = np.ones((iterations * 2 + 1, iterations * 2 + 1))
         dilated = binary_dilation(~mask, structure=structure, iterations=iterations)
-        
+
         return ~dilated
-    
+
     def detect_cloud_shadow(
         self,
         nir: xr.DataArray,
@@ -311,27 +309,27 @@ class CloudMasker:
             nir_values = nir
         else:
             nir_values = nir.values
-        
+
         # Calculate local threshold for shadow detection
         # Shadow pixels have NIR values below local mean
         kernel_size = 7
-        
+
         # Simple threshold-based shadow detection
         nir_mean = np.nanmean(nir_values)
         nir_std = np.nanstd(nir_values)
-        
+
         # Shadow threshold (1 std below mean)
         shadow_threshold = nir_mean - 1.5 * nir_std
-        
+
         # Create initial shadow mask
         shadow_mask = nir_values < shadow_threshold
-        
+
         # Remove areas that are already identified as cloud
         shadow_mask = shadow_mask & cloud_mask.values
-        
+
         # Dilate slightly
         shadow_mask = self._dilate_mask(shadow_mask, 1)
-        
+
         # Create DataArray
         if isinstance(cloud_mask, xr.DataArray):
             result = xr.DataArray(
@@ -341,9 +339,9 @@ class CloudMasker:
             )
         else:
             result = xr.DataArray(shadow_mask)
-        
+
         return result
-    
+
     def get_cloud_confidence_levels(self) -> dict:
         """
         Get the cloud confidence level mapping.
@@ -360,7 +358,7 @@ class CloudMasker:
 
 
 def create_cloud_mask(
-    qa_pixel: Union[xr.DataArray, np.ndarray],
+    qa_pixel: xr.DataArray | np.ndarray,
     cloud_confidence: int = CloudMasker.CONFIDENCE_MEDIUM,
     dilate_pixels: int = 3,
 ) -> xr.DataArray:

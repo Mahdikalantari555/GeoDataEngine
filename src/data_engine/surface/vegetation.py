@@ -1,11 +1,10 @@
 """Vegetation indices calculations for METRIC ETa model."""
 
+
 import numpy as np
 import xarray as xr
-from typing import Optional, Union
 
 from ..core.datacube import DataCube
-from ..core.constants import NDVI_VEGETATION_THRESHOLD
 
 
 class VegetationIndices:
@@ -29,13 +28,14 @@ class VegetationIndices:
         savi_l: Soil adjustment factor L (default: 0.5)
         use_asrar_lai: Use Asrar et al. LAI relationship (default: False)
     """
-    
+
     def __init__(
         self,
         ndvi_min: float = 0.0,
         ndvi_max: float = 0.8,
         savi_l: float = 0.5,
-        use_asrar_lai: bool = False
+        use_asrar_lai: bool = False,
+        compute_optram: bool = False
     ):
         """
         Initialize VegetationIndices calculator.
@@ -46,12 +46,14 @@ class VegetationIndices:
             savi_l: Soil adjustment factor L for SAVI calculation
             use_asrar_lai: If True, use Asrar et al. LAI relationship;
                           otherwise use exponential relationship
+            compute_optram: Also compute OPTRAM soil-moisture proxy (default: False)
         """
         self.ndvi_min = ndvi_min
         self.ndvi_max = ndvi_max
         self.savi_l = savi_l
         self.use_asrar_lai = use_asrar_lai
-    
+        self.compute_optram = compute_optram
+
     def compute(self, cube: DataCube) -> DataCube:
         """
         Compute all vegetation indices and add to DataCube.
@@ -66,35 +68,40 @@ class VegetationIndices:
             ValueError: If required bands are missing
         """
         self._validate_inputs(cube)
-        
+
         # Compute NDVI (required for other indices)
         ndvi = self.compute_ndvi(cube)
         cube.add("ndvi", ndvi)
-        
+
         # Compute EVI if blue band is available
         if "blue" in cube.bands():
             evi = self.compute_evi(cube)
             cube.add("evi", evi)
-        
+
         # Compute LAI
         lai = self.compute_lai(cube)
         cube.add("lai", lai)
-        
+
         # Compute SAVI
         savi = self.compute_savi(cube)
         cube.add("savi", savi)
-        
+
         # Compute Fractional Vegetation Cover (FVC)
         fvc = self.compute_fvc(cube)
         cube.add("fvc", fvc)
-        
+
         # Compute NDWI if green and nir08 bands are available
         if "green" in cube.bands() and "nir08" in cube.bands():
             ndwi = self.compute_ndwi(cube)
             cube.add("ndwi", ndwi)
 
+        # Compute OPTRAM soil-moisture proxy if requested
+        if self.compute_optram:
+            from .optram import OPTRAM
+            OPTRAM().compute(cube)
+
         return cube
-    
+
     def _validate_inputs(self, cube: DataCube) -> None:
         """
         Validate that required input bands exist in DataCube.
@@ -112,7 +119,7 @@ class VegetationIndices:
                 f"Missing required bands for vegetation indices: {missing}. "
                 f"Available bands: {cube.bands()}"
             )
-    
+
     def _get_nodata_mask(self, cube: DataCube) -> xr.DataArray:
         """
         Get nodata mask from available QA bands.
@@ -126,20 +133,20 @@ class VegetationIndices:
         # Try to get nodata from QA pixel band first
         if "qa_pixel" in cube.bands():
             qa = cube.get("qa_pixel")
-            
+
             # Handle NaN values in QA band (from cloud masking)
             if np.any(np.isnan(qa.values)):
                 # If QA band has NaN values, use the NaN mask directly
                 # This means cloud masking has already been applied
                 valid_mask = ~np.isnan(qa.values)
                 return xr.DataArray(valid_mask, dims=['y', 'x'])
-            
+
             # Original logic for non-NaN QA values
             # Ensure proper integer type for bit operations
             qa_values = qa.values
             if qa_values.dtype.kind not in ['u', 'i']:
                 qa_values = qa_values.astype(np.uint32)
-            
+
             # Cloud masks (bits 1-3 for Landsat 8/9)
             cloud_mask = ~(
                 ((qa_values >> 1) & 1).astype(bool) |  # Cirrus
@@ -154,7 +161,7 @@ class VegetationIndices:
             np.ones(first_band.shape, dtype=bool),
             dims=['y', 'x']
         )
-    
+
     def compute_ndvi(self, cube: DataCube) -> xr.DataArray:
         """
         Compute Normalized Difference Vegetation Index (NDVI).
@@ -178,25 +185,25 @@ class VegetationIndices:
         """
         if "red" not in cube.bands() or "nir08" not in cube.bands():
             raise ValueError("NDVI requires 'red' and 'nir08' bands")
-        
+
         red = cube.get("red").astype(float)
         nir = cube.get("nir08").astype(float)
-        
+
         # Get nodata mask
         valid_mask = self._get_nodata_mask(cube)
-        
+
         # Compute NDVI
         denominator = nir + red
         # Avoid division by zero
         with np.errstate(divide='ignore', invalid='ignore'):
             ndvi = (nir - red) / denominator
-        
+
         # Set invalid pixels to nodata
         ndvi = ndvi.where(valid_mask & (denominator != 0), np.nan)
-        
+
         # Clamp to valid range
         ndvi = ndvi.clip(-1.0, 1.0)
-        
+
         # Add attributes
         ndvi.name = "ndvi"
         ndvi.attrs = {
@@ -204,9 +211,9 @@ class VegetationIndices:
             'units': 'dimensionless',
             'range': '[-1, 1]'
         }
-        
+
         return ndvi
-    
+
     def compute_evi(self, cube: DataCube) -> xr.DataArray:
         """
         Compute Enhanced Vegetation Index (EVI).
@@ -227,37 +234,37 @@ class VegetationIndices:
         missing = [b for b in required if b not in cube.bands()]
         if missing:
             raise ValueError(f"EVI requires bands: {missing}")
-        
+
         blue = cube.get("blue").astype(float)
         red = cube.get("red").astype(float)
         nir = cube.get("nir08").astype(float)
-        
+
         # Get nodata mask
         valid_mask = self._get_nodata_mask(cube)
-        
+
         # Compute EVI with gain factor
         numerator = 2.5 * (nir - red)
         denominator = nir + 6.0 * red - 7.5 * blue + 1.0
-        
+
         with np.errstate(divide='ignore', invalid='ignore'):
             evi = numerator / denominator
-        
+
         # Set invalid pixels to nodata
         evi = evi.where(valid_mask & (denominator != 0), np.nan)
-        
+
         # Clamp to valid range [0, 1]
         evi = evi.clip(0.0, 1.0)
-        
+
         evi.name = "evi"
         evi.attrs = {
             'long_name': 'Enhanced Vegetation Index',
             'units': 'dimensionless',
             'range': '[0, 1]'
         }
-        
+
         return evi
-    
-    def compute_lai(self, cube: DataCube, ndvi: Optional[xr.DataArray] = None) -> xr.DataArray:
+
+    def compute_lai(self, cube: DataCube, ndvi: xr.DataArray | None = None) -> xr.DataArray:
         """
         Compute Leaf Area Index (LAI) from NDVI.
         
@@ -277,10 +284,10 @@ class VegetationIndices:
                 ndvi = self.compute_ndvi(cube)
             else:
                 ndvi = cube.get("ndvi")
-        
+
         # Get nodata mask
         valid_mask = self._get_nodata_mask(cube)
-        
+
         # Compute LAI using xarray operations
         if self.use_asrar_lai:
             # Asrar et al. relationship
@@ -302,23 +309,23 @@ class VegetationIndices:
                     )
                 )
             )
-        
+
         # Apply nodata mask
         lai = lai.where(valid_mask, np.nan)
-        
+
         # Clamp to reasonable range
         lai = lai.clip(0.0, 6.0)
-        
+
         lai.name = "lai"
         lai.attrs = {
             'long_name': 'Leaf Area Index',
             'units': 'm²/m²',
             'range': '[0, 6]'
         }
-        
+
         return lai
-    
-    def compute_savi(self, cube: DataCube, ndvi: Optional[xr.DataArray] = None) -> xr.DataArray:
+
+    def compute_savi(self, cube: DataCube, ndvi: xr.DataArray | None = None) -> xr.DataArray:
         """
         Compute Soil Adjusted Vegetation Index (SAVI).
         
@@ -334,41 +341,41 @@ class VegetationIndices:
         """
         if "red" not in cube.bands() or "nir08" not in cube.bands():
             raise ValueError("SAVI requires 'red' and 'nir08' bands")
-        
+
         red = cube.get("red").astype(float)
         nir = cube.get("nir08").astype(float)
-        
+
         # Get nodata mask
         valid_mask = self._get_nodata_mask(cube)
-        
+
         # Compute SAVI
         L = self.savi_l
         denominator = nir + red + L
-        
+
         with np.errstate(divide='ignore', invalid='ignore'):
             savi = ((nir - red) / denominator) * (1 + L)
-        
+
         # Set invalid pixels to nodata
         savi = savi.where(valid_mask & (denominator != 0), np.nan)
-        
+
         # Clamp to reasonable range
         savi = savi.clip(-1.0, 1.0)
-        
+
         savi.name = "savi"
         savi.attrs = {
             'long_name': 'Soil Adjusted Vegetation Index',
             'units': 'dimensionless',
             'L_factor': L
         }
-        
+
         return savi
-    
+
     def compute_fvc(
         self,
         cube: DataCube,
-        ndvi: Optional[xr.DataArray] = None,
-        ndvi_min: Optional[float] = None,
-        ndvi_max: Optional[float] = None
+        ndvi: xr.DataArray | None = None,
+        ndvi_min: float | None = None,
+        ndvi_max: float | None = None
     ) -> xr.DataArray:
         """
         Compute Fractional Vegetation Cover (FVC).
@@ -390,23 +397,23 @@ class VegetationIndices:
                 ndvi = self.compute_ndvi(cube)
             else:
                 ndvi = cube.get("ndvi")
-        
+
         if ndvi_min is None:
             ndvi_min = self.ndvi_min
         if ndvi_max is None:
             ndvi_max = self.ndvi_max
-        
+
         # Get nodata mask
         valid_mask = self._get_nodata_mask(cube)
-        
+
         # Compute FVC
         with np.errstate(invalid='ignore'):
             fvc = ((ndvi - ndvi_min) / (ndvi_max - ndvi_min)) ** 2
-        
+
         # Apply nodata mask and clamp
         fvc = fvc.where(valid_mask, np.nan)
         fvc = fvc.clip(0.0, 1.0)
-        
+
         fvc.name = "fvc"
         fvc.attrs = {
             'long_name': 'Fractional Vegetation Cover',
@@ -415,9 +422,9 @@ class VegetationIndices:
             'ndvi_min': ndvi_min,
             'ndvi_max': ndvi_max
         }
-        
+
         return fvc
-    
+
     def compute_ndwi(self, cube: DataCube) -> xr.DataArray:
         """
         Compute Normalized Difference Water Index (NDWI).
@@ -440,25 +447,25 @@ class VegetationIndices:
         """
         if "green" not in cube.bands() or "nir08" not in cube.bands():
             raise ValueError("NDWI requires 'green' and 'nir08' bands")
-        
+
         green = cube.get("green").astype(float)
         nir = cube.get("nir08").astype(float)
-        
+
         # Get nodata mask
         valid_mask = self._get_nodata_mask(cube)
-        
+
         # Compute NDWI
         denominator = green + nir
         # Avoid division by zero
         with np.errstate(divide='ignore', invalid='ignore'):
             ndwi = (green - nir) / denominator
-        
+
         # Set invalid pixels to nodata
         ndwi = ndwi.where(valid_mask & (denominator != 0), np.nan)
-        
+
         # Clamp to valid range
         ndwi = ndwi.clip(-1.0, 1.0)
-        
+
         # Add attributes
         ndwi.name = "ndwi"
         ndwi.attrs = {
@@ -466,7 +473,7 @@ class VegetationIndices:
             'units': 'dimensionless',
             'range': '[-1, 1]'
         }
-        
+
         return ndwi
 
 
@@ -474,4 +481,4 @@ class VegetationIndices:
 Vegetation = VegetationIndices
 
 
-__all__ = ['VegetationIndices', 'Vegetation']
+__all__ = ['Vegetation', 'VegetationIndices']

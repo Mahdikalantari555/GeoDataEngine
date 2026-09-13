@@ -1,7 +1,7 @@
 """Radiation balance module for METRIC ETa model."""
 
-from .shortwave import ShortwaveRadiation
 from .longwave import LongwaveRadiation
 from .net_radiation import NetRadiation
+from .shortwave import ShortwaveRadiation
 
-__all__ = ['ShortwaveRadiation', 'LongwaveRadiation', 'NetRadiation']
+__all__ = ['LongwaveRadiation', 'NetRadiation', 'ShortwaveRadiation']

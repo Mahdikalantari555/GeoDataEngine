@@ -6,19 +6,19 @@ __version__ = "0.1.0"
 
 # Shared core modules (importable as data_engine.<module>)
 from data_engine import (
-    calibration,  # noqa: F401
-    core,  # noqa: F401
-    energy_balance,  # noqa: F401
-    et,  # noqa: F401
-    io,  # noqa: F401
-    output,  # noqa: F401
-    preprocess,  # noqa: F401
-    radiation,  # noqa: F401
-    settings,  # noqa: F401
-    surface,  # noqa: F401
-    utils,  # noqa: F401
-    validation,  # noqa: F401
-    weather,  # noqa: F401
+    calibration,  # ruff: ignore[unused-import]
+    core,  # ruff: ignore[unused-import]
+    energy_balance,  # ruff: ignore[unused-import]
+    et,  # ruff: ignore[unused-import]
+    io,  # ruff: ignore[unused-import]
+    output,  # ruff: ignore[unused-import]
+    preprocess,  # ruff: ignore[unused-import]
+    radiation,  # ruff: ignore[unused-import]
+    settings,  # ruff: ignore[unused-import]
+    surface,  # ruff: ignore[unused-import]
+    utils,  # ruff: ignore[unused-import]
+    validation,  # ruff: ignore[unused-import]
+    weather,  # ruff: ignore[unused-import]
 )
 
 # Convenience re-exports
@@ -46,7 +46,7 @@ from data_engine.surface import (
 
 try:
     from data_engine.landsat import (
-        METRICPipeline as LandsatMETRICPipeline,  # noqa: F401
+        METRICPipeline as LandsatMETRICPipeline,  # ruff: ignore[unused-import]
     )
 except ImportError:  # sentinel only — landsat is an alias
     pass

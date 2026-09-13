@@ -7,10 +7,8 @@ Microsoft Planetary Computer's STAC API at runtime.
 import json
 import logging
 import os
-import warnings
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple, Union
 
 import numpy as np
 
@@ -18,6 +16,7 @@ import numpy as np
 # stackstac calls np.can_cast(1, dtype) with Python scalars which now raises TypeError.
 # Patch globally so both stackstac.prepare and stackstac.to_dask work without pinning numpy.
 _original_can_cast = np.can_cast
+
 
 def _patched_can_cast(from_, to, casting="safe"):  # type: ignore
     try:
@@ -41,6 +40,7 @@ def _patched_can_cast(from_, to, casting="safe"):  # type: ignore
             return _original_can_cast(from_dtype, to, casting=casting)
         raise
 
+
 np.can_cast = _patched_can_cast  # type: ignore
 
 # --- pandas 2.x compatibility: infer_datetime_format removed ---
@@ -58,23 +58,20 @@ except Exception:
     pass
 
 import rasterio
-from rasterio.transform import from_bounds
 import stackstac
-import xarray as xr
-from pystac_client import Client
 from pyproj import Transformer
+from pystac_client import Client
 from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
-from shapely.ops import transform as shapely_transform, unary_union
-from ..core.datacube import DataCube
+from shapely.ops import transform as shapely_transform
+from shapely.ops import unary_union
+
 from .errors import (
     AuthenticationError,
     DownloadError,
-    NoSceneFoundError,
-    PartialDataError,
     GeometryError,
+    NoSceneFoundError,
 )
-from .landsat_reader import LandsatReader
 
 # Fix PROJ database conflict with PostgreSQL on Windows
 # Remove PROJ_LIB to use rasterio's bundled PROJ database instead of PostgreSQL's older version
@@ -131,14 +128,14 @@ class PlanetaryComputerLandsatFetcher:
                    If your ROI is in a different CRS (e.g., UTM), specify it here
                    and the fetcher will transform it to WGS84 for STAC queries.
     """
-    
+
     # Planetary Computer STAC endpoint
     STAC_API_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
-    
+
     def __init__(
         self,
         collection: str = "landsat-c2-l2",
-        bands: List[str] = None,
+        bands: list[str] = None,
         max_cloud_cover: float = 70.0,
         source_crs: str = "EPSG:4326",
         cache_dir: str = None,
@@ -160,12 +157,12 @@ class PlanetaryComputerLandsatFetcher:
         self.source_crs = source_crs
         self.cache_dir = Path(cache_dir) if cache_dir else None
         self.use_cache = use_cache
-        
+
         # Validate bands
         for band in self.bands:
             if band not in MPC_BAND_MAPPING:
                 raise ValueError(f"Unknown band: {band}. Supported bands: {list(MPC_BAND_MAPPING.keys())}")
-        
+
         # Initialize STAC client
         try:
             self.client = Client.open(self.STAC_API_URL)
@@ -173,17 +170,17 @@ class PlanetaryComputerLandsatFetcher:
         except Exception as e:
             logger.error(f"Failed to connect to STAC API: {e}")
             raise AuthenticationError(f"Failed to connect to STAC API: {e}") from e
-    
+
     def fetch_scenes(
         self,
-        roi_geometry: Union[dict, BaseGeometry],
-        date_range: Tuple[Union[str, datetime], Union[str, datetime]],
+        roi_geometry: dict | BaseGeometry,
+        date_range: tuple[str | datetime, str | datetime],
         output_dir: str,
         min_cloud_cover: float = 0.0,
         resolution: float = 30.0,
         sort_by: str = 'date',
         min_coverage_ratio: float = 1
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """
         Fetch and download Landsat scenes clipped to ROI.
         
@@ -220,29 +217,29 @@ class PlanetaryComputerLandsatFetcher:
         # Normalize ROI geometry
         roi_geometry = self._normalize_geometry(roi_geometry)
         roi_bbox = list(roi_geometry.bounds)
-        
+
         # Normalize dates
         start_date, end_date = self._normalize_dates(date_range)
-        
+
         # Ensure output directory exists
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
-        
+
         # Search using bbox
         items = self._search_scenes_by_bbox(roi_bbox, start_date, end_date, min_cloud_cover)
-        
+
         # Filter for full ROI coverage
         full_coverage_items = self._filter_full_coverage(roi_bbox, items)
-        
+
         if not full_coverage_items:
             raise NoSceneFoundError("No scenes found with full ROI coverage")
         if sort_by == 'cloud_cover':
             full_coverage_items.sort(key=lambda item: item.properties.get('cloud_cover', 100.0))
         else:
             full_coverage_items.sort(key=lambda item: item.datetime)
-        
+
         logger.info(f"Found {len(full_coverage_items)} qualifying scenes with full coverage")
-        
+
         # Download each scene
         results = []
         for item in full_coverage_items:
@@ -292,16 +289,16 @@ class PlanetaryComputerLandsatFetcher:
                 "mtl_file": str(mtl_path),
                 "band_files": downloaded_files
             })
-        
+
         if not results:
             raise NoSceneFoundError(
                 "No scenes found with sufficient valid pixel coverage. "
-                f"Tried {len(full_coverage_items)} scene(s) but all had coverage < {min_coverage_ratio*100:.0f}%"
+                f"Tried {len(full_coverage_items)} scene(s) but all had coverage < {min_coverage_ratio * 100:.0f}%"
             )
 
         return results
 
-    def _find_existing_scene(self, scene_dir: Path) -> Optional[Tuple[Dict[str, Path], Path]]:
+    def _find_existing_scene(self, scene_dir: Path) -> tuple[dict[str, Path], Path] | None:
         """Check if a scene was already downloaded.
 
         A scene counts as complete when its directory contains all
@@ -328,9 +325,9 @@ class PlanetaryComputerLandsatFetcher:
 
     def search_scenes(
         self,
-        roi_geometry: Union[dict, BaseGeometry],
-        date_range: Tuple[Union[str, datetime], Union[str, datetime]]
-    ) -> List[Dict]:
+        roi_geometry: dict | BaseGeometry,
+        date_range: tuple[str | datetime, str | datetime]
+    ) -> list[dict]:
         """Search for available scenes (returns metadata only, no download).
         
         Args:
@@ -342,10 +339,10 @@ class PlanetaryComputerLandsatFetcher:
         """
         roi_geometry = self._normalize_geometry(roi_geometry)
         start_date, end_date = self._normalize_dates(date_range)
-        
+
         # Get bbox from ROI geometry
         bbox = list(roi_geometry.bounds)
-        
+
         # Search with bbox
         search_params = {
             "collections": [self.collection],
@@ -353,13 +350,13 @@ class PlanetaryComputerLandsatFetcher:
             "datetime": f"{start_date.isoformat()}/{end_date.isoformat()}",
             "limit": 100,
         }
-        
+
         try:
             items = list(self.client.search(**search_params).items())
         except Exception as e:
             logger.error(f"STAC search failed: {e}")
             raise
-        
+
         # Convert to metadata dicts
         results = []
         for item in items:
@@ -373,13 +370,13 @@ class PlanetaryComputerLandsatFetcher:
                     'bbox': item.bbox,
                     'geometry': item.geometry,
                 })
-        
+
         return results
-    
+
     def get_scene_count(
         self,
-        roi_geometry: Union[dict, BaseGeometry],
-        date_range: Tuple[Union[str, datetime], Union[str, datetime]]
+        roi_geometry: dict | BaseGeometry,
+        date_range: tuple[str | datetime, str | datetime]
     ) -> int:
         """Get count of available scenes without downloading.
         
@@ -396,14 +393,14 @@ class PlanetaryComputerLandsatFetcher:
         except Exception as e:
             logger.error(f"Failed to get scene count: {e}")
             return 0
-    
+
     def _search_scenes_by_bbox(
         self,
-        bbox: List[float],
+        bbox: list[float],
         start_date: datetime,
         end_date: datetime,
         min_cloud_cover: float
-    ) -> List:
+    ) -> list:
         """Internal method to search STAC API for scenes using bbox.
         
         Args:
@@ -422,14 +419,14 @@ class PlanetaryComputerLandsatFetcher:
             "datetime": f"{start_date.isoformat()}/{end_date.isoformat()}",
             "limit": 100,
         }
-        
+
         try:
             search = self.client.search(**search_params)
             items = list(search.items())
         except Exception as e:
             logger.error(f"STAC search request failed: {e}")
             raise AuthenticationError(f"STAC search failed: {e}") from e
-        
+
         # Filter by cloud cover - ensure we don't exceed max_cloud_cover
         filtered = []
         for item in items:
@@ -438,15 +435,15 @@ class PlanetaryComputerLandsatFetcher:
                 filtered.append(item)
             else:
                 logger.debug(f"Scene {item.id} filtered out: cloud cover {cloud_cover}% > {self.max_cloud_cover}%")
-        
+
         logger.info(f"Found {len(filtered)} scenes with cloud cover <= {self.max_cloud_cover}%")
         return filtered
-    
+
     def _filter_full_coverage(
         self,
-        roi_bbox: List[float],
-        items: List,
-    ) -> List:
+        roi_bbox: list[float],
+        items: list,
+    ) -> list:
         """Filter items to only those that fully contain the ROI geometry.
         
         This method provides an initial filter based on scene footprint geometry.
@@ -461,10 +458,10 @@ class PlanetaryComputerLandsatFetcher:
             List of items where ROI bbox intersects with scene footprint
         """
         from shapely.geometry import shape
-        
+
         roi_box = box(roi_bbox[0], roi_bbox[1], roi_bbox[2], roi_bbox[3])
         candidates = []
-        
+
         for item in items:
             # Use the scene footprint geometry
             try:
@@ -472,26 +469,26 @@ class PlanetaryComputerLandsatFetcher:
             except Exception as e:
                 logger.warning(f"Could not parse scene geometry for {item.id}: {e}")
                 continue
-            
+
             # Check if there's any intersection (looser filter at this stage)
             # Final validation will be done after download
             if roi_box.intersects(scene_footprint):
                 candidates.append(item)
             else:
                 logger.debug(f"Scene {item.id} does not intersect with ROI at all")
-        
+
         logger.info(f"Initial filter: {len(candidates)} scenes intersect with ROI (final validation after download)")
-        
+
         return candidates
-    
+
     def download_and_clip_bands(
         self,
         item,
-        bbox: List[float],
+        bbox: list[float],
         output_dir: Path,
         resolution: float = 30.0,
         min_coverage_ratio: float = 0.55
-    ) -> Dict[str, Path]:
+    ) -> dict[str, Path]:
         """Download and clip bands to GeoTIFF files using stackstac.
         
         Args:
@@ -515,22 +512,22 @@ class PlanetaryComputerLandsatFetcher:
         except Exception as e:
             logger.error(f"Failed to sign item {item.id}: {e}")
             raise AuthenticationError(f"MPC authentication failed for item {item.id}: {e}") from e
-        
+
         # Calculate UTM EPSG for the bbox
         utm_epsg = self._get_utm_epsg(bbox)
-        
+
         # Transform bbox to UTM coordinates
         transformer = Transformer.from_crs("EPSG:4326", f"EPSG:{utm_epsg}", always_xy=True)
         min_x, min_y = transformer.transform(bbox[0], bbox[1])
         max_x, max_y = transformer.transform(bbox[2], bbox[3])
         utm_bounds = (min_x, min_y, max_x, max_y)
-        
+
         # Use stackstac for efficient streaming and clipping
         asset_keys = [b for b in self.bands if b in signed_item.assets]
-        
+
         if not asset_keys:
             raise DownloadError(f"No required bands found in item {item.id}")
-        
+
         stack = stackstac.stack(
             signed_item,
             assets=asset_keys,
@@ -539,13 +536,13 @@ class PlanetaryComputerLandsatFetcher:
             bounds=utm_bounds,
             chunksize=256 * 1024 * 1024  # 256 MB
         )
-        
+
         # Compute and save each band as GeoTIFF using rasterio
         stack = stack.compute()
-        
+
         downloaded_files = {}
         date_str = item.datetime.strftime('%Y%m%d')
-        
+
         # Get the transform and shape from the stack
         # stackstac returns (band, y, x) or (time, band, y, x)
         if 'band' in stack.dims:
@@ -553,14 +550,14 @@ class PlanetaryComputerLandsatFetcher:
         elif 'x' in stack.dims and 'y' in stack.dims:
             # Single band case - need to check
             band_dim = None
-        
+
         # Get the crs and transform
         # Stackstac should have these as attributes
         if hasattr(stack, 'crs') and stack.crs is not None:
             crs = stack.crs
         else:
             crs = f"EPSG:{utm_epsg}"
-        
+
         # Get transform from stack's transform attribute or compute it
         if hasattr(stack, 'transform') and stack.transform is not None:
             transform = stack.transform
@@ -569,7 +566,7 @@ class PlanetaryComputerLandsatFetcher:
             # Handle different possible dimension names
             height = stack.sizes.get('y') or stack.sizes.get('latitude') or stack.sizes.get('band')
             width = stack.sizes.get('x') or stack.sizes.get('longitude')
-            
+
             # If we have band dimension, we need y and x specifically
             if 'y' in stack.sizes:
                 height = stack.sizes['y']
@@ -578,7 +575,7 @@ class PlanetaryComputerLandsatFetcher:
             else:
                 # Use the last dimension size as height
                 height = list(stack.sizes.values())[-1]
-            
+
             if 'x' in stack.sizes:
                 width = stack.sizes['x']
             elif 'longitude' in stack.sizes:
@@ -586,7 +583,7 @@ class PlanetaryComputerLandsatFetcher:
             else:
                 # Use the second to last dimension size as width
                 width = list(stack.sizes.values())[-2]
-            
+
             if height and width:
                 transform = rasterio.transform.from_bounds(
                     utm_bounds[0], utm_bounds[1],  # left, bottom
@@ -595,13 +592,13 @@ class PlanetaryComputerLandsatFetcher:
                 )
             else:
                 raise DownloadError(f"Could not determine stack dimensions: {stack.sizes}")
-        
+
         for band in stack.band.values:
             band_data = stack.sel(band=band)
-            
+
             # Get the data as numpy array
             data = band_data.values
-            
+
             # Handle multi-dimensional data - squeeze to 2D if needed
             # stackstac may return (y, x) or could have extra dimensions
             if data.ndim > 2:
@@ -610,10 +607,10 @@ class PlanetaryComputerLandsatFetcher:
                 # If still more than 2D, take the last 2 dimensions
                 if data.ndim > 2:
                     data = data.reshape(-1, data.shape[-1])
-            
+
             filename = f"{band}.tif"
             output_path = output_dir / filename
-            
+
             # Write using rasterio directly
             height, width = data.shape
             with rasterio.open(
@@ -629,37 +626,37 @@ class PlanetaryComputerLandsatFetcher:
                 compress='lzw'
             ) as dst:
                 dst.write(data, 1)
-            
+
             downloaded_files[str(band)] = output_path
             logger.info(f"Saved {band} to {output_path}")
-        
+
         # ------------------------------------------------------------
         # CHECK AOI COVERAGE RATIO AFTER DOWNLOAD
         # ------------------------------------------------------------
         # Verify that the downloaded scene actually covers the ROI with valid pixels
         # This handles cases where STAC geometry says it covers but actual pixels are nodata
-        
+
         # Use red band to check coverage (commonly available and representative)
         red_band_path = downloaded_files.get('red')
         if red_band_path and red_band_path.exists():
             with rasterio.open(red_band_path) as src:
                 red_data = src.read(1)
                 nodata_value = src.nodata if src.nodata is not None else -9999
-                
+
                 # Create mask of valid pixels (not nodata)
                 valid_mask = (red_data != nodata_value)
-                
+
                 # Also check for zero or negative values which may indicate no data
                 # Landsat Collection 2 Level-2 surface reflectance should be positive
                 valid_mask = valid_mask & (red_data > 0)
-                
+
                 total_pixels = valid_mask.size
                 valid_pixels = np.count_nonzero(valid_mask)
-                
+
                 if total_pixels > 0:
                     coverage_ratio = valid_pixels / total_pixels
                     logger.info(f"Valid coverage ratio for {item.id}: {coverage_ratio:.3f} ({valid_pixels}/{total_pixels} pixels)")
-                    
+
                     if coverage_ratio < min_coverage_ratio:
                         logger.warning(
                             f"Scene {item.id} skipped: insufficient AOI coverage "
@@ -679,10 +676,10 @@ class PlanetaryComputerLandsatFetcher:
                 else:
                     logger.warning(f"Could not determine coverage for {item.id}: no pixels found")
         else:
-            logger.warning(f"Could not check coverage: red band not available")
-        
+            logger.warning("Could not check coverage: red band not available")
+
         return downloaded_files
-    
+
     def _create_mtl_metadata(self, item, output_dir: Path) -> Path:
         """Create MTL.json from STAC item properties.
         
@@ -744,7 +741,7 @@ class PlanetaryComputerLandsatFetcher:
             "properties": item.properties,
             "assets": list(item.assets.keys()),
         }
-        
+
         # Add MTL-compatible structure
         mtl_data["METADATA"] = {
             "PRODUCT_METADATA": {
@@ -759,15 +756,15 @@ class PlanetaryComputerLandsatFetcher:
                 "SUN_AZIMUTH": sun_azimuth
             }
         }
-        
+
         mtl_path = output_dir / "MTL.json"
         with open(mtl_path, 'w') as f:
             json.dump(mtl_data, f, indent=2, default=str)
-        
+
         logger.info(f"Created MTL.json at {mtl_path}")
         return mtl_path
-    
-    def _get_utm_epsg(self, bbox: List[float]) -> int:
+
+    def _get_utm_epsg(self, bbox: list[float]) -> int:
         """Determine UTM EPSG code for a given bbox in WGS84.
         
         Args:
@@ -779,21 +776,21 @@ class PlanetaryComputerLandsatFetcher:
         # Calculate centroid
         lon_center = (bbox[0] + bbox[2]) / 2
         lat_center = (bbox[1] + bbox[3]) / 2
-        
+
         # UTM zone number
         zone_number = int((lon_center + 180) / 6) + 1
-        
+
         # Northern or Southern hemisphere
         if lat_center >= 0:
             epsg = 32600 + zone_number  # Northern hemisphere
         else:
             epsg = 32700 + zone_number  # Southern hemisphere
-        
+
         return epsg
-    
+
     def _normalize_geometry(
         self,
-        geometry: Union[dict, BaseGeometry],
+        geometry: dict | BaseGeometry,
         target_crs: str = None
     ) -> BaseGeometry:
         """Normalize input geometry to shapely geometry and transform to WGS84.
@@ -810,7 +807,6 @@ class PlanetaryComputerLandsatFetcher:
             GeometryError: If geometry is invalid or transformation fails
         """
         from shapely.geometry import shape
-        from pyproj import CRS
 
         if isinstance(geometry, dict):
             geom_type = geometry.get("type")
@@ -863,18 +859,18 @@ class PlanetaryComputerLandsatFetcher:
             raise GeometryError(
                 f"Geometry must be dict or shapely geometry, got {type(geometry)}"
             )
-        
+
         if geom.is_empty:
             raise GeometryError("Geometry is empty")
-        
+
         # Determine source CRS
         source_crs = target_crs or self.source_crs
-        
+
         # Try to detect CRS from geometry if it has a CRS (e.g., from GeoJSON with CRS info)
         if target_crs is None and hasattr(geom, 'crs') and geom.crs:
             source_crs = str(geom.crs)
             logger.debug(f"Detected CRS from geometry: {source_crs}")
-        
+
         # If still not determined, check if bounds are in WGS84 range
         if target_crs is None and source_crs.upper() == "EPSG:4326":
             bounds = geom.bounds  # (minx, miny, maxx, maxy)
@@ -892,7 +888,7 @@ class PlanetaryComputerLandsatFetcher:
                     zone = int((lon + 180) / 6) + 1
                     source_crs = f"EPSG:327{zone:02d}"  # Southern hemisphere UTM
                 logger.info(f"Auto-detected source CRS as {source_crs} based on geometry bounds")
-        
+
         # Transform to WGS84 if needed
         if source_crs.upper() != "EPSG:4326":
             try:
@@ -905,13 +901,13 @@ class PlanetaryComputerLandsatFetcher:
                 raise GeometryError(
                     f"Failed to transform geometry from {source_crs} to WGS84: {e}"
                 ) from e
-        
+
         return geom
-    
+
     def _normalize_dates(
         self,
-        date_range: Tuple[Union[str, datetime], Union[str, datetime]]
-    ) -> Tuple[datetime, datetime]:
+        date_range: tuple[str | datetime, str | datetime]
+    ) -> tuple[datetime, datetime]:
         """Normalize date range to datetime objects.
         
         Args:
@@ -921,19 +917,19 @@ class PlanetaryComputerLandsatFetcher:
             Tuple of (start_datetime, end_datetime)
         """
         start, end = date_range
-        
+
         if isinstance(start, str):
             start = datetime.fromisoformat(start)
         if isinstance(end, str):
             end = datetime.fromisoformat(end)
-        
+
         # Ensure end date includes the full day
         if end.time() == datetime.min.time():
             end = end + timedelta(days=1) - timedelta(seconds=1)
-        
+
         if start > end:
             raise ValueError(f"Start date {start} is after end date {end}")
-        
+
         return start, end
 
 
@@ -960,7 +956,7 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
     def __init__(
         self,
         collection: str = "sentinel-2-l2a",
-        bands: List[str] = None,
+        bands: list[str] = None,
         max_cloud_cover: float = 70.0,
         source_crs: str = "EPSG:4326",
     ) -> None:
@@ -975,9 +971,9 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
 
     def search_scenes(
         self,
-        roi_geometry: Union[dict, BaseGeometry],
-        date_range: Tuple[Union[str, datetime], Union[str, datetime]],
-    ) -> List[Dict]:
+        roi_geometry: dict | BaseGeometry,
+        date_range: tuple[str | datetime, str | datetime],
+    ) -> list[dict]:
         """Search for available Sentinel-2 scenes.
 
         Returns metadata dicts with ``id``, ``datetime``, ``cloud_cover``,
@@ -1016,11 +1012,11 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
     def download_and_clip_bands(
         self,
         item,
-        bbox: List[float],
+        bbox: list[float],
         output_dir: Path,
         resolution: float = 10.0,
         min_coverage_ratio: float = 0.55,
-    ) -> Dict[str, Path]:
+    ) -> dict[str, Path]:
         """Download and clip Sentinel-2 bands using rasterio directly.
 
         Bands are saved as ``<internal_name>.tif`` (e.g. ``blue.tif``,
@@ -1058,7 +1054,7 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
             )
 
         # Download and process each band individually to avoid file handle issues
-        downloaded_files: Dict[str, Path] = {}
+        downloaded_files: dict[str, Path] = {}
         asset_to_internal = {v: k for k, v in self.SENTINEL_BAND_MAPPING.items()}
 
         for asset_key in asset_keys:
@@ -1068,9 +1064,8 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
                 logger.info(f"Downloading band {asset_key} from {asset_href[:80]}...")
 
                 import gc
-                import urllib.request
-                import tempfile
                 import io
+                import urllib.request
 
                 # Download file to memory first using urllib (more reliable than rasterio for HTTP)
                 req = urllib.request.Request(
@@ -1101,7 +1096,11 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
                 # Reproject if needed
                 out_crs = f"EPSG:{utm_epsg}"
                 if str(src_crs) != out_crs:
-                    from rasterio.warp import calculate_default_transform, reproject, Resampling
+                    from rasterio.warp import (
+                        Resampling,
+                        calculate_default_transform,
+                        reproject,
+                    )
                     dst_transform, dst_width, dst_height = calculate_default_transform(
                         src_crs, out_crs,
                         data.shape[1], data.shape[0],
@@ -1218,14 +1217,14 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
 
     def fetch_scenes(
         self,
-        roi_geometry: Union[dict, BaseGeometry],
-        date_range: Tuple[Union[str, datetime], Union[str, datetime]],
+        roi_geometry: dict | BaseGeometry,
+        date_range: tuple[str | datetime, str | datetime],
         output_dir: str,
         min_cloud_cover: float = 0.0,
         resolution: float = 10.0,
         sort_by: str = "date",
         min_coverage_ratio: float = 0.55,
-    ) -> List[Dict]:
+    ) -> list[dict]:
         """Fetch and download Sentinel-2 scenes from Planetary Computer.
 
         This overrides the parent's :meth:`fetch_scenes` to use Sentinel-2
@@ -1265,7 +1264,7 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
 
         logger.info(f"Found {len(full_coverage_items)} qualifying Sentinel-2 scenes")
 
-        results: List[Dict] = []
+        results: list[dict] = []
         for item in full_coverage_items:
             scene_date = item.datetime.strftime("%Y%m%d") if item.datetime else "unknown"
             scene_dir = output_path / f"sentinel_{scene_date}"

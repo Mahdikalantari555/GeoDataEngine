@@ -17,14 +17,9 @@ Key relationship:
 """
 
 import logging
-import numpy as np
-from typing import Dict, Optional
 from dataclasses import dataclass
 
-from data_engine.core.constants import (
-    VON_KARMAN, AIR_DENSITY, AIR_SPECIFIC_HEAT,
-    FREEZING_POINT
-)
+import numpy as np
 
 
 @dataclass
@@ -32,13 +27,13 @@ class SoilHeatFluxConfig:
     """Configuration for soil heat flux calculation."""
     # Method selection: 'bastiaanssen', 'allen', 'moran', 'simple', 'document', 'automatic'
     method: str = 'automatic'
-    
+
     # Vegetation threshold for switching between bare soil and vegetation formulas
     ndvi_threshold: float = 0.2
-    
+
     # Minimum G/Rn ratio (safety floor)
     min_gn_ratio: float = 0.01
-    
+
     # Maximum G/Rn ratio (safety ceiling)
     # Increased from 0.25 to 0.40 for bare soil conditions:
     # - Typical vegetated surfaces: 2-10%
@@ -57,8 +52,8 @@ class SoilHeatFlux:
     Attributes:
         config: Configuration parameters for G calculation
     """
-    
-    def __init__(self, config: Optional[SoilHeatFluxConfig] = None):
+
+    def __init__(self, config: SoilHeatFluxConfig | None = None):
         """
         Initialize SoilHeatFlux calculator.
         
@@ -66,13 +61,13 @@ class SoilHeatFlux:
             config: Optional configuration parameters. Uses defaults if not provided.
         """
         self.config = config or SoilHeatFluxConfig()
-    
+
     def calculate_gn_ratio(
         self,
         ndvi: np.ndarray,
-        ts_kelvin: Optional[np.ndarray] = None,
-        ta_kelvin: Optional[np.ndarray] = None,
-        albedo: Optional[np.ndarray] = None
+        ts_kelvin: np.ndarray | None = None,
+        ta_kelvin: np.ndarray | None = None,
+        albedo: np.ndarray | None = None
     ) -> np.ndarray:
         """
         Calculate G/Rn ratio using selected method.
@@ -102,7 +97,7 @@ class SoilHeatFlux:
             return self._automatic_method(ndvi, ts_kelvin, ta_kelvin, albedo)
         else:
             raise ValueError(f"Unknown soil heat flux method: {method}")
-    
+
     def _bastiaanssen_method(self, ndvi: np.ndarray) -> np.ndarray:
         """
         Bastiaanssen (1995) formulation for G/Rn.
@@ -111,20 +106,20 @@ class SoilHeatFlux:
         G/Rn = 0.31 * (1 - NDVI) (bare soil)
         """
         gn_ratio = np.zeros_like(ndvi, dtype=np.float64)
-        
+
         # Vegetated areas (NDVI > threshold)
         veg_mask = ndvi > self.config.ndvi_threshold
         gn_ratio[veg_mask] = 0.05 + 0.25 * ndvi[veg_mask]
-        
+
         # Bare soil areas (NDVI <= threshold)
         bare_mask = ndvi <= self.config.ndvi_threshold
         gn_ratio[bare_mask] = 0.31 * (1.0 - ndvi[bare_mask])
-        
+
         # Apply safety limits
         gn_ratio = np.clip(gn_ratio, self.config.min_gn_ratio, self.config.max_gn_ratio)
-        
+
         return gn_ratio
-    
+
     def _allen_method(self, ndvi: np.ndarray) -> np.ndarray:
         """
         Allen et al. METRIC-specific formulation for G/Rn.
@@ -133,25 +128,25 @@ class SoilHeatFlux:
         G/Rn = 0.5 * (1 - NDVI) (bare soil)
         """
         gn_ratio = np.zeros_like(ndvi, dtype=np.float64)
-        
+
         # Vegetated areas
         veg_mask = ndvi > self.config.ndvi_threshold
         gn_ratio[veg_mask] = 0.95 - 0.19 * ndvi[veg_mask]
-        
+
         # Bare soil areas
         bare_mask = ndvi <= self.config.ndvi_threshold
         gn_ratio[bare_mask] = 0.5 * (1.0 - ndvi[bare_mask])
-        
+
         # Apply safety limits
         gn_ratio = np.clip(gn_ratio, self.config.min_gn_ratio, self.config.max_gn_ratio)
-        
+
         return gn_ratio
-    
+
     def _moran_method(
         self,
         ndvi: np.ndarray,
-        ts_kelvin: Optional[np.ndarray] = None,
-        ta_kelvin: Optional[np.ndarray] = None
+        ts_kelvin: np.ndarray | None = None,
+        ta_kelvin: np.ndarray | None = None
     ) -> np.ndarray:
         """
         Moran et al. formulation for G/Rn.
@@ -164,18 +159,18 @@ class SoilHeatFlux:
         if ts_kelvin is None or ta_kelvin is None:
             # Fallback to Bastiaanssen if temperature data not available
             return self._bastiaanssen_method(ndvi)
-        
+
         # Calculate temperature difference
         delta_t = ts_kelvin - ta_kelvin
-        
+
         # Moran formulation (simplified, assuming Rn normalization)
         gn_ratio = 0.4 * delta_t - 0.5 * ndvi
-        
+
         # Apply safety limits
         gn_ratio = np.clip(gn_ratio, self.config.min_gn_ratio, self.config.max_gn_ratio)
-        
+
         return gn_ratio
-    
+
     def _simple_method(self, ndvi: np.ndarray) -> np.ndarray:
         """
         Simple METRIC approximation for G/Rn.
@@ -192,8 +187,8 @@ class SoilHeatFlux:
     def _document_method(
         self,
         ndvi: np.ndarray,
-        ts_kelvin: Optional[np.ndarray] = None,
-        albedo: Optional[np.ndarray] = None
+        ts_kelvin: np.ndarray | None = None,
+        albedo: np.ndarray | None = None
     ) -> np.ndarray:
         """
         METRIC Workflow document formulation for G/Rn.
@@ -241,9 +236,9 @@ class SoilHeatFlux:
     def _automatic_method(
         self,
         ndvi: np.ndarray,
-        ts_kelvin: Optional[np.ndarray] = None,
-        ta_kelvin: Optional[np.ndarray] = None,
-        albedo: Optional[np.ndarray] = None
+        ts_kelvin: np.ndarray | None = None,
+        ta_kelvin: np.ndarray | None = None,
+        albedo: np.ndarray | None = None
     ) -> np.ndarray:
         """
         Automatic method selection for G/Rn based on available data.
@@ -276,10 +271,10 @@ class SoilHeatFlux:
         self,
         rn: np.ndarray,
         ndvi: np.ndarray,
-        ts_kelvin: Optional[np.ndarray] = None,
-        ta_kelvin: Optional[np.ndarray] = None,
-        albedo: Optional[np.ndarray] = None
-    ) -> Dict[str, np.ndarray]:
+        ts_kelvin: np.ndarray | None = None,
+        ta_kelvin: np.ndarray | None = None,
+        albedo: np.ndarray | None = None
+    ) -> dict[str, np.ndarray]:
         """
         Calculate soil heat flux and related parameters.
 
@@ -336,7 +331,7 @@ class SoilHeatFlux:
             'G': G,
             'G_Rn_ratio': gn_ratio
         }
-    
+
     def compute(self, cube):
         """
         Compute soil heat flux and add to DataCube.
@@ -347,7 +342,6 @@ class SoilHeatFlux:
         Returns:
             DataCube with added G and G_Rn_ratio
         """
-        from ..core.datacube import DataCube
 
         # Get required inputs
         rn = cube.get("R_n")
@@ -385,10 +379,10 @@ class SoilHeatFlux:
         self,
         rn: np.ndarray,
         ndvi: np.ndarray,
-        ts_kelvin: Optional[np.ndarray] = None,
-        ta_kelvin: Optional[np.ndarray] = None,
-        albedo: Optional[np.ndarray] = None
-    ) -> Dict[str, np.ndarray]:
+        ts_kelvin: np.ndarray | None = None,
+        ta_kelvin: np.ndarray | None = None,
+        albedo: np.ndarray | None = None
+    ) -> dict[str, np.ndarray]:
         """
         Convenience method to calculate soil heat flux.
 

@@ -28,13 +28,14 @@ Stability Corrections (Monin-Obukhov):
         ψ_h = 2 * ln((1 + y)/2) + ln((1 + y²)/2)
 """
 
-import numpy as np
-from typing import Dict, Optional, Tuple
 from dataclasses import dataclass
 
+import numpy as np
+
 from data_engine.core.constants import (
-    VON_KARMAN, AIR_DENSITY, AIR_SPECIFIC_HEAT,
-    GRAVITATIONAL_ACCELERATION, FREEZING_POINT
+    AIR_SPECIFIC_HEAT,
+    GRAVITATIONAL_ACCELERATION,
+    VON_KARMAN,
 )
 
 
@@ -44,22 +45,22 @@ class SensibleHeatFluxConfig:
     # Measurement heights
     z_wind: float = 10.0  # Wind measurement height (m)
     z_temp: float = 2.0   # Temperature measurement height (m)
-    
+
     # Stability correction parameters
     use_stability_correction: bool = True
     stability_iterations: int = 5
-    
+
     # Anchor pixel calibration (dT coefficients)
     # dT = a * (Ts - Ta) + b
-    dt_a: Optional[float] = None
-    dt_b: Optional[float] = None
-    
+    dt_a: float | None = None
+    dt_b: float | None = None
+
     # Minimum/maximum constraints
     min_rah: float = 10.0  # s/m
     max_rah: float = 500.0  # s/m
     min_h: float = -500.0  # W/m²
     max_h: float = 3000.0  # W/m²
-    
+
     # Roughness length ratio (z0h/z0m)
     roughness_ratio: float = 0.1
 
@@ -76,8 +77,8 @@ class SensibleHeatFlux:
     Attributes:
         config: Configuration parameters for H calculation
     """
-    
-    def __init__(self, config: Optional[SensibleHeatFluxConfig] = None):
+
+    def __init__(self, config: SensibleHeatFluxConfig | None = None):
         """
         Initialize SensibleHeatFlux calculator.
         
@@ -85,7 +86,7 @@ class SensibleHeatFlux:
             config: Optional configuration parameters. Uses defaults if not provided.
         """
         self.config = config or SensibleHeatFluxConfig()
-    
+
     def calculate_air_density(
         self,
         ta_kelvin: np.ndarray,
@@ -105,21 +106,21 @@ class SensibleHeatFlux:
         """
         # Specific gas constant for dry air (J/kg/K)
         R_specific = 287.058
-        
+
         # Handle potential division by zero
         ta_safe = np.maximum(ta_kelvin, 100.0)
-        
+
         air_density = pressure_pa / (R_specific * ta_safe)
-        
+
         # Physical bounds
         air_density = np.clip(air_density, 0.5, 2.0)
-        
+
         return air_density
-    
+
     def calculate_displacement_height(
         self,
         z0m: np.ndarray,
-        lai: Optional[np.ndarray] = None
+        lai: np.ndarray | None = None
     ) -> np.ndarray:
         """
         Calculate displacement height (d) from roughness length.
@@ -139,13 +140,13 @@ class SensibleHeatFlux:
             d = 0.67 * z0m * np.sqrt(np.maximum(lai, 0))
         else:
             # Simplified: d ≈ 2/3 * z0m * 100 (empirical factor)
-            d = 2.0/3.0 * z0m * 100.0
-        
+            d = 2.0 / 3.0 * z0m * 100.0
+
         # Physical bounds - ensure d doesn't exceed reasonable limits
         d = np.clip(d, 0.0, np.maximum(z0m * 10.0, 0.1))  # More conservative upper bound
-        
+
         return d
-    
+
     def calculate_neutral_rah(
         self,
         z0m: np.ndarray,
@@ -172,44 +173,44 @@ class SensibleHeatFlux:
             Aerodynamic resistance (s/m) under neutral conditions
         """
         k2 = VON_KARMAN ** 2
-        
+
         # Calculate log profiles
         import logging
         logger = logging.getLogger(__name__)
-        
+
         logger.info(f"Calculating rah: z_wind={z_wind}, z_temp={z_temp}")
         logger.info(f"Calculating rah: d range min={np.nanmin(d):.3f}, max={np.nanmax(d):.3f}")
         logger.info(f"Calculating rah: z0m range min={np.nanmin(z0m):.3f}, max={np.nanmax(z0m):.3f}")
         logger.info(f"Calculating rah: z0h range min={np.nanmin(z0h):.3f}, max={np.nanmax(z0h):.3f}")
         logger.info(f"Calculating rah: u range min={np.nanmin(u):.3f}, max={np.nanmax(u):.3f}")
-        
+
         # Ensure valid arguments for log functions
         z0m_safe = np.maximum(z0m, 0.0001)  # Minimum roughness length
         z0h_safe = np.maximum(z0h, 0.00001)  # Minimum heat roughness length
-        
+
         # Ensure displacement height doesn't exceed measurement heights
         d_safe = np.minimum(d, z_wind - z0m_safe - 0.1)  # Leave margin
-        
+
         ln_zm_z0m = np.log(np.maximum((z_wind - d_safe) / z0m_safe, 1.001))
         ln_zh_z0h = np.log(np.maximum((z_temp - d_safe) / z0h_safe, 1.001))
-        
+
         logger.info(f"Calculating rah: ln_zm_z0m range min={np.nanmin(ln_zm_z0m):.3f}, max={np.nanmax(ln_zm_z0m):.3f}")
         logger.info(f"Calculating rah: ln_zh_z0h range min={np.nanmin(ln_zh_z0h):.3f}, max={np.nanmax(ln_zh_z0h):.3f}")
-        
+
         # Calculate rah
         rah_neutral = (ln_zm_z0m * ln_zh_z0h) / (k2 * np.maximum(u, 0.1))
-        
+
         logger.info(f"Calculating rah: rah_neutral range min={np.nanmin(rah_neutral):.3f}, max={np.nanmax(rah_neutral):.3f}")
-        
+
         # Apply physical bounds
         rah_neutral = np.clip(
             rah_neutral,
             self.config.min_rah,
             self.config.max_rah
         )
-        
+
         return rah_neutral
-    
+
     def calculate_stability_parameter(
         self,
         H: np.ndarray,
@@ -241,17 +242,17 @@ class SensibleHeatFlux:
             GRAVITATIONAL_ACCELERATION * z_measure * H /
             (ta_kelvin * AIR_SPECIFIC_HEAT * np.maximum(rah, 1.0))
         )
-        
+
         # Convert to z/L (approximate relationship)
         z_L = richardson * 10  # Empirical scaling
-        
+
         return z_L
-    
+
     def calculate_psi_functions(
         self,
         z_L: np.ndarray,
         z: float
-    ) -> Tuple[np.ndarray, np.ndarray]:
+    ) -> tuple[np.ndarray, np.ndarray]:
         """
         Calculate stability correction functions (ψ_m, ψ_h).
         
@@ -273,10 +274,10 @@ class SensibleHeatFlux:
         """
         psi_m = np.zeros_like(z_L, dtype=np.float64)
         psi_h = np.zeros_like(z_L, dtype=np.float64)
-        
+
         # Unstable conditions (daytime, convective)
         unstable_mask = z_L < 0
-        
+
         if np.any(unstable_mask):
             z_L_unstable = np.abs(z_L[unstable_mask])
 
@@ -290,7 +291,7 @@ class SensibleHeatFlux:
             # Clip values to avoid numerical issues
             x = np.clip(x, 0.0, 10.0)
             y = np.clip(y, 0.0, 10.0)
-            
+
             # Stability corrections for momentum
             psi_m_unstable = (
                 2.0 * np.log((1.0 + x) / 2.0) +
@@ -298,29 +299,29 @@ class SensibleHeatFlux:
                 2.0 * np.arctan(x) +
                 np.pi / 2.0
             )
-            
+
             # Stability corrections for heat
             psi_h_unstable = (
                 2.0 * np.log((1.0 + y) / 2.0) +
                 np.log((1.0 + y**2) / 2.0)
             )
-            
+
             psi_m[unstable_mask] = psi_m_unstable
             psi_h[unstable_mask] = psi_h_unstable
-        
+
         # Stable conditions (nighttime, stable)
         stable_mask = z_L > 0
-        
+
         if np.any(stable_mask):
             z_L_stable = z_L[stable_mask]
-            
+
             # Simple linear correction for stable conditions
             beta = 5.0  # Empirical coefficient
             psi_m[stable_mask] = -beta * z_L_stable
             psi_h[stable_mask] = -beta * z_L_stable
-        
+
         return psi_m, psi_h
-    
+
     def calculate_stable_rah(
         self,
         z0m: np.ndarray,
@@ -351,32 +352,32 @@ class SensibleHeatFlux:
             Aerodynamic resistance with stability corrections (s/m)
         """
         k2 = VON_KARMAN ** 2
-        
+
         # Ensure valid arguments for log functions with stability corrections
         z0m_safe = np.maximum(z0m, 0.0001)  # Minimum roughness length
         z0h_safe = np.maximum(z0h, 0.00001)  # Minimum heat roughness length
-        
+
         # Ensure displacement height doesn't exceed measurement heights
         d_safe = np.minimum(d, z_wind - z0m_safe - 0.1)  # Leave margin
-        
+
         # Calculate log profiles with stability corrections
         ln_zm_z0m = np.log(np.maximum((z_wind - d_safe) / z0m_safe, 1.001)) - psi_m
         ln_zh_z0h = np.log(np.maximum((z_temp - d_safe) / z0h_safe, 1.001)) - psi_h
-        
+
         # Calculate rah
         rah = (ln_zm_z0m * ln_zh_z0h) / (k2 * np.maximum(u, 0.1))
-        
+
         # Apply physical bounds
         rah = np.clip(rah, self.config.min_rah, self.config.max_rah)
-        
+
         return rah
-    
+
     def calculate_dt_linear(
         self,
         ts_kelvin: np.ndarray,
         ta_kelvin: np.ndarray,
-        a: Optional[float] = None,
-        b: Optional[float] = None
+        a: float | None = None,
+        b: float | None = None
     ) -> np.ndarray:
         """
         Calculate dT using linear calibration from anchor pixels.
@@ -402,7 +403,7 @@ class SensibleHeatFlux:
             b = 0.0
 
         return a * (ts_kelvin - ta_kelvin) + b
-    
+
     def calculate_dt_empirical(
         self,
         ts_kelvin: np.ndarray,
@@ -424,15 +425,15 @@ class SensibleHeatFlux:
         """
         # Base dT from temperature difference
         dt_base = ts_kelvin - ta_kelvin
-        
+
         # Modify based on vegetation (vegetation reduces dT)
         dt_vegetation = -2.0 * ndvi
-        
+
         # Combine
         dT = dt_base + dt_vegetation
-        
+
         return dT
-    
+
     def calculate_rah_iterative(
         self,
         z0m: np.ndarray,
@@ -466,31 +467,31 @@ class SensibleHeatFlux:
         rah = self.calculate_neutral_rah(
             z0m, z0h, d, u, z_wind, z_temp
         )
-        
+
         # Iterative stability correction
         for _ in range(self.config.stability_iterations):
             # Calculate stability parameter
             z_L = self.calculate_stability_parameter(
                 H, rah, rho, ta_kelvin, z_temp
             )
-            
+
             # Calculate stability corrections
             psi_m, psi_h = self.calculate_psi_functions(z_L, z_temp)
-            
+
             # Update rah with corrections
             rah_new = self.calculate_stable_rah(
                 z0m, z0h, d, u, psi_m, psi_h, z_wind, z_temp
             )
-            
+
             # Check convergence
             rah_diff = np.abs(rah_new - rah)
             rah = rah_new
-            
+
             if np.max(rah_diff) < 0.1:
                 break
-        
+
         return rah
-    
+
     def calculate(
         self,
         rn: np.ndarray,
@@ -498,12 +499,12 @@ class SensibleHeatFlux:
         ta_kelvin: np.ndarray,
         u: np.ndarray,
         z0m: np.ndarray,
-        pressure_pa: Optional[np.ndarray] = None,
-        ndvi: Optional[np.ndarray] = None,
-        lai: Optional[np.ndarray] = None,
-        dt_a: Optional[float] = None,
-        dt_b: Optional[float] = None
-    ) -> Dict[str, np.ndarray]:
+        pressure_pa: np.ndarray | None = None,
+        ndvi: np.ndarray | None = None,
+        lai: np.ndarray | None = None,
+        dt_a: float | None = None,
+        dt_b: float | None = None
+    ) -> dict[str, np.ndarray]:
         """
         Calculate sensible heat flux and related parameters.
         
@@ -538,7 +539,7 @@ class SensibleHeatFlux:
         ta_kelvin = to_numpy(ta_kelvin)
         u = to_numpy(u)
         z0m = to_numpy(z0m)
-        
+
         if pressure_pa is not None:
             pressure_pa = to_numpy(pressure_pa)
         else:
@@ -549,38 +550,38 @@ class SensibleHeatFlux:
             ndvi = to_numpy(ndvi)
         if lai is not None:
             lai = to_numpy(lai)
-        
+
         # Calculate air density
         rho = self.calculate_air_density(ta_kelvin, pressure_pa)
-        
+
         # Calculate roughness lengths
         z0h = z0m * self.config.roughness_ratio
-        
+
         # Calculate displacement height
         d = self.calculate_displacement_height(z0m, lai)
-        
+
         # Calculate dT (temperature difference at reference height)
         import logging
         logger = logging.getLogger(__name__)
-        
+
         logger.info(f"Calculating dT: dt_a={dt_a}, dt_b={dt_b}")
-        
+
         if dt_a is not None:
             logger.info(f"Using METRIC calibration: H = {dt_a} * dT, dT = Ts - Ta")
             dT = ts_kelvin - ta_kelvin
-            
+
             # Calculate proper aerodynamic resistance instead of hardcoded value
             # First calculate basic parameters needed for RAH calculation
             z0h = z0m * self.config.roughness_ratio
             d = self.calculate_displacement_height(z0m, lai)
-            
+
             # Calculate air density if not already calculated
             if 'rho' not in locals():
                 rho = self.calculate_air_density(ta_kelvin, pressure_pa)
-            
+
             # Calculate initial H for stability iterations
             H_initial = dt_a * dT
-            
+
             # Calculate aerodynamic resistance with proper physics
             if self.config.use_stability_correction:
                 # Use iterative method with stability corrections
@@ -595,14 +596,14 @@ class SensibleHeatFlux:
                     self.config.z_wind,
                     self.config.z_temp
                 )
-            
+
             # Calculate final H using proper aerodynamic resistance
             # FIXED: Use proper physics formula H = rho * cp * dT / rah
             # The dt_a coefficient should already account for rah in calibration
-            
+
             # CORRECTED - Enhanced fallback: Check for calibration failure indicators
             physics_fallback = False
-            
+
             if dt_a is not None:
                 if dt_a < 5.0 or dt_a > 100.0:
                     # dt_a outside physical range (10-50 W/m²/K), use physics formula
@@ -614,7 +615,7 @@ class SensibleHeatFlux:
                     physics_fallback = True
                 else:
                     logger.info(f"Using calibrated H: dt_a={dt_a:.2f} W/m²/K, dT = Ts - Ta")
-            
+
             if physics_fallback:
                 # Calculate rah from Monin-Obukhov similarity if available
                 if rah is not None and np.nanmean(rah) > 0:
@@ -630,33 +631,32 @@ class SensibleHeatFlux:
                 # Use calibrated H calculation: H = dt_a * dT
                 H = dt_a * dT
                 logger.info(f"Calibrated H: dt_a={dt_a:.2f} W/m²/K, dT range=[{np.nanmin(dT):.2f}, {np.nanmax(dT):.2f}] K")
-            
+
             # Apply physical constraints
             H = np.clip(H, self.config.min_h, self.config.max_h)
-            
+
             # Energy balance constraint: H cannot exceed available energy (Rn - G)
             # NOTE: G is not available in calculate() method, estimate as 5% of Rn
             # This is a reasonable approximation for typical conditions
             g_estimated = rn * 0.05  # G ≈ 5% of Rn for typical conditions
             available_energy = np.maximum(rn - g_estimated, 1.0)  # Prevent division by zero
-            
+
             # CORRECTED - Physics-based bounds instead of artificial constraints:
             # Upper bound: H cannot exceed 95% of available energy
             H = np.minimum(H, available_energy * 0.95)
-            
+
             # Note: Lower bound constraint removed to allow physically accurate negative H values
             # For cold pixels (well-watered vegetation at night), H can legitimately be negative
             # when Ts < Ta (heat flows from air to surface)
 
-            
             # Remove the minimum_h_baseline constraint as it masks calibration issues
             # The old constraint: min_h_baseline = available_energy * 0.05 was too restrictive
-            
+
             logger.info(f"Calculated dT range: min={np.nanmin(dT):.3f}, max={np.nanmax(dT):.3f}")
             logger.info(f"Calculated H range: min={np.nanmin(H):.3f}, max={np.nanmax(H):.3f}")
             logger.info(f"Calculated RAH range: min={np.nanmin(rah):.3f}, max={np.nanmax(rah):.3f}")
             logger.info(f"METRIC DEBUG: calibration_a={dt_a}, H_mean={np.nanmean(H):.2f}, RAH_mean={np.nanmean(rah):.2f}")
-            
+
             # Check for calibration failure indicators
             if dt_a == 0.0:
                 logger.warning("WARNING: calibration_a is zero! This will cause H=0 everywhere.")
@@ -724,22 +724,22 @@ class SensibleHeatFlux:
             # This is a reasonable approximation for typical conditions
             g_estimated = rn * 0.05  # G ≈ 5% of Rn for typical conditions
             available_energy = np.maximum(rn - g_estimated, 1.0)  # Prevent division by zero
-            
+
             # CORRECTED - Physics-based bounds:
             # Upper bound: H cannot exceed 95% of available energy
             H = np.minimum(H, available_energy * 0.95)
-            
+
             # Note: Lower bound constraint removed to allow physically accurate negative H values
             # For cold pixels (well-watered vegetation at night), H can legitimately be negative
             # when Ts < Ta (heat flows from air to surface)
-        
+
         return {
             'H': H,
             'rah': rah,
             'dT': dT,
             'rho': rho
         }
-    
+
     def compute(self, cube, calibration):
         """
         Compute sensible heat flux and add to DataCube.
@@ -751,7 +751,6 @@ class SensibleHeatFlux:
         Returns:
             DataCube with added H, rah, dT, rho
         """
-        from ..core.datacube import DataCube
 
         # Get required inputs
         rn = cube.get("R_n")
@@ -804,7 +803,7 @@ class SensibleHeatFlux:
 
         return cube
 
-    def __call__(self, *args, **kwargs) -> Dict[str, np.ndarray]:
+    def __call__(self, *args, **kwargs) -> dict[str, np.ndarray]:
         """
         Convenience method to calculate sensible heat flux.
         """

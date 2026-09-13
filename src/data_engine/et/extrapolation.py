@@ -1,10 +1,10 @@
+import logging
+from datetime import datetime, timedelta
+
 import numpy as np
-import xarray as xr
 import pandas as pd
 import requests
-from datetime import datetime, timedelta
-from typing import List, Tuple, Dict, Optional
-import logging
+import xarray as xr
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -20,13 +20,13 @@ class ETExtrapolator:
         2. Frozen ETrF: ETa(day_i) = ETrF_last × ET0(day_i)
         3. ETrF Interpolation: ETrF(t) = ETrF1 + (ETrF2 - ETrF1) × (t - t1) / (t2 - t1)
     """
-    
-    def __init__(self, config: Optional[Dict] = None):
+
+    def __init__(self, config: dict | None = None):
         """Initialize ETExtrapolator with configuration options."""
         self.config = self._merge_config(config)
         logger.info("ETExtrapolator initialized with configuration: %s", self.config)
-    
-    def _merge_config(self, config: Optional[Dict]) -> Dict:
+
+    def _merge_config(self, config: dict | None) -> dict:
         """Merge user config with default values."""
         default_config = {
             "extrapolation_days": 3,
@@ -36,17 +36,17 @@ class ETExtrapolator:
             "etrf_min": 0.0,
             "etrf_max": 2.0
         }
-        
+
         if config is None:
             return default_config
-        
+
         return {**default_config, **config}
-    
+
     def extrapolate(
         self,
         etrf_last: np.ndarray,
         et0_forecast: xr.DataArray
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Extrapolate ETa for future dates using frozen ETrF.
         
@@ -63,20 +63,20 @@ class ETExtrapolator:
                 - 'ETrF_used': The frozen ETrF value used
         """
         logger.info("Starting extrapolation with frozen ETrF method")
-        
+
         # Validate inputs
         if etrf_last.ndim != 2:
             raise ValueError("etrf_last must be a 2D numpy array")
-        
+
         if "time" not in et0_forecast.dims:
             raise ValueError("et0_forecast must have a 'time' dimension")
-        
+
         # Calculate ETa for each forecast day
         et0_values = et0_forecast.values
         if et0_values.ndim == 1:
             # Spatially uniform ET0, reshape to match ETrF dimensions
             et0_values = et0_values[:, np.newaxis, np.newaxis]
-            et0_values = np.repeat(np.repeat(et0_values, etrf_last.shape[0], axis=1), 
+            et0_values = np.repeat(np.repeat(et0_values, etrf_last.shape[0], axis=1),
                                  etrf_last.shape[1], axis=2)
         elif et0_values.ndim == 3:
             # Spatially varying ET0, check dimensions match
@@ -84,31 +84,31 @@ class ETExtrapolator:
                 raise ValueError("ET0 forecast dimensions do not match ETrF dimensions")
         else:
             raise ValueError("ET0 forecast must be 1D (uniform) or 3D (spatial)")
-        
+
         # Calculate ETa = ETrF_last × ET0
         eta_daily = etrf_last[np.newaxis, :, :] * et0_values
-        
+
         # Apply ETa bounds
         eta_daily = np.clip(eta_daily, self.config["min_et_daily"], self.config["max_et_daily"])
-        
+
         # Get dates from ET0 forecast
         dates = pd.to_datetime(et0_forecast.time.values).tolist()
-        
+
         logger.info("Extrapolation complete: %d days forecasted", len(dates))
-        
+
         return {
             'ETa_daily': eta_daily,
             'dates': dates,
             'ETrF_used': etrf_last
         }
-    
+
     def interpolate(
         self,
-        etrf_scenes: List[Tuple[datetime, np.ndarray]],  # [(date1, etrf1), (date2, etrf2), ..., (dateN, etrfN)]
+        etrf_scenes: list[tuple[datetime, np.ndarray]],  # [(date1, etrf1), (date2, etrf2), ..., (dateN, etrfN)]
         et0_data: xr.DataArray,
         method: str = "weighted",  # "linear" or "weighted"
         gap_threshold: int = 30  # Max days between scenes to interpolate (None = all gaps)
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Interpolate ETa between Landsat scenes, handling multiple scene pairs and gaps.
         
@@ -143,22 +143,22 @@ class ETExtrapolator:
                 - 'gaps': List of gap segments with start/end dates and number of days
         """
         logger.info("Starting interpolation with %s method", method)
-        
+
         # Validate inputs
         if not etrf_scenes:
             raise ValueError("etrf_scenes must not be empty")
-        
+
         # Check scenes are sorted by date
         dates = [date for date, _ in etrf_scenes]
         if dates != sorted(dates):
             raise ValueError("etrf_scenes must be sorted by date")
-        
+
         if "time" not in et0_data.dims:
             raise ValueError("et0_data must have a 'time' dimension")
-        
+
         # Detect gaps
         gaps = self._detect_gaps(etrf_scenes, gap_threshold)
-        
+
         # Interpolate each gap
         all_eta = []
         all_dates = []
@@ -166,13 +166,13 @@ class ETExtrapolator:
         all_weights = []
         all_scene_pairs = []
         valid_gaps = []
-        
+
         for gap in gaps:
-            logger.info("Interpolating gap from %s to %s (%d days)", 
-                      gap['start_date'].strftime('%Y-%m-%d'), 
-                      gap['end_date'].strftime('%Y-%m-%d'), 
+            logger.info("Interpolating gap from %s to %s (%d days)",
+                      gap['start_date'].strftime('%Y-%m-%d'),
+                      gap['end_date'].strftime('%Y-%m-%d'),
                       gap['days'])
-            
+
             # Interpolate gap
             gap_result = self._interpolate_gap(
                 gap['scene1'],
@@ -198,25 +198,25 @@ class ETExtrapolator:
                     all_weights.append(gap_result['weights'])
             all_scene_pairs.append((gap['scene1'][0], gap['scene2'][0]))
             valid_gaps.append(gap)
-        
+
         # Combine results
         if all_eta:
             eta_daily = np.concatenate(all_eta, axis=0)
         else:
             eta_daily = np.array([])
-        
+
         if all_etrf:
             etrf_interpolated = np.concatenate(all_etrf, axis=0)
         else:
             etrf_interpolated = np.array([])
-        
+
         if all_weights:
             weights = np.concatenate(all_weights, axis=0)
         else:
             weights = np.array([])
-        
+
         logger.info("Interpolation complete: %d days interpolated", len(all_dates))
-        
+
         return {
             'ETa_daily': eta_daily,
             'dates': all_dates,
@@ -225,12 +225,12 @@ class ETExtrapolator:
             'scene_pairs': all_scene_pairs,
             'gaps': valid_gaps
         }
-    
+
     def _detect_gaps(
         self,
-        etrf_scenes: List[Tuple[datetime, np.ndarray]],
-        gap_threshold: Optional[int] = None
-    ) -> List[Dict]:
+        etrf_scenes: list[tuple[datetime, np.ndarray]],
+        gap_threshold: int | None = None
+    ) -> list[dict]:
         """
         Detect gaps between consecutive Landsat scenes.
         
@@ -250,13 +250,13 @@ class ETExtrapolator:
                 }, ...]
         """
         gaps = []
-        
+
         for i in range(len(etrf_scenes) - 1):
             date1, etrf1 = etrf_scenes[i]
             date2, etrf2 = etrf_scenes[i + 1]
-            
+
             days_between = (date2 - date1).days
-            
+
             # Check if gap is within threshold
             if gap_threshold is not None and days_between > gap_threshold:
                 logger.info("Skipping gap between %s and %s (too large: %d days)",
@@ -264,7 +264,7 @@ class ETExtrapolator:
                           date2.strftime('%Y-%m-%d'),
                           days_between)
                 continue
-            
+
             # Generate target dates for interpolation (all dates between date1 and date2)
             target_dates = []
             current_date = date1 + timedelta(days=1)
@@ -286,18 +286,18 @@ class ETExtrapolator:
                 'days': days_between,
                 'target_dates': target_dates
             })
-        
+
         logger.info("Detected %d valid gaps for interpolation", len(gaps))
-        
+
         return gaps
-    
+
     def _interpolate_gap(
         self,
-        scene1: Tuple[datetime, np.ndarray],
-        scene2: Tuple[datetime, np.ndarray],
+        scene1: tuple[datetime, np.ndarray],
+        scene2: tuple[datetime, np.ndarray],
         et0_data: xr.DataArray,
         method: str = "weighted"
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Interpolate ETa for a single gap between two scenes.
         
@@ -312,14 +312,14 @@ class ETExtrapolator:
         """
         date1, etrf1 = scene1
         date2, etrf2 = scene2
-        
+
         # Get target dates for interpolation
         target_dates = []
         current_date = date1 + timedelta(days=1)
         while current_date < date2:
             target_dates.append(current_date)
             current_date += timedelta(days=1)
-        
+
         if not target_dates:
             shape = etrf1.shape
             # Return correctly-shaped empty arrays for both methods:
@@ -330,19 +330,19 @@ class ETExtrapolator:
                 'etrf_interpolated': np.empty((0, *shape)),
                 'weights': np.empty((0, 2))
             }
-        
+
         # Extract ET0 data for target dates
         et0_gap = et0_data.sel(time=target_dates)
-        
+
         if et0_gap.time.size != len(target_dates):
             raise ValueError("Missing ET0 data for some target dates")
-        
+
         et0_values = et0_gap.values
         if et0_values.ndim == 1:
             et0_values = et0_values[:, np.newaxis, np.newaxis]
             et0_values = np.repeat(np.repeat(et0_values, etrf1.shape[0], axis=1),
                                  etrf1.shape[1], axis=2)
-        
+
         # Interpolation
         if method == "linear":
             return self._interpolate_linear(scene1, scene2, et0_gap, et0_values, target_dates)
@@ -350,88 +350,88 @@ class ETExtrapolator:
             return self._interpolate_weighted(scene1, scene2, et0_gap, et0_values, target_dates)
         else:
             raise ValueError(f"Unknown interpolation method: {method}")
-    
+
     def _interpolate_linear(
         self,
-        scene1: Tuple[datetime, np.ndarray],
-        scene2: Tuple[datetime, np.ndarray],
+        scene1: tuple[datetime, np.ndarray],
+        scene2: tuple[datetime, np.ndarray],
         et0_gap: xr.DataArray,
         et0_values: np.ndarray,
-        target_dates: List[datetime]
-    ) -> Dict[str, np.ndarray]:
+        target_dates: list[datetime]
+    ) -> dict[str, np.ndarray]:
         """Interpolate using linear ETrF method."""
         date1, etrf1 = scene1
         date2, etrf2 = scene2
-        
+
         total_days = (date2 - date1).days
-        
+
         eta_daily = []
         etrf_interpolated = []
-        
+
         for i, target_date in enumerate(target_dates):
             days_from_scene1 = (target_date - date1).days
             fraction = days_from_scene1 / total_days
-            
+
             # Linear interpolation of ETrF
             etrf_t = etrf1 + fraction * (etrf2 - etrf1)
-            
+
             # Apply ETrF bounds
             etrf_t = np.clip(etrf_t, self.config["etrf_min"], self.config["etrf_max"])
-            
+
             # Calculate ETa
             eta_t = etrf_t * et0_values[i]
             eta_t = np.clip(eta_t, self.config["min_et_daily"], self.config["max_et_daily"])
-            
+
             eta_daily.append(eta_t)
             etrf_interpolated.append(etrf_t)
-        
+
         return {
             'ETa_daily': np.array(eta_daily),
             'dates': target_dates,
             'etrf_interpolated': np.array(etrf_interpolated)
         }
-    
+
     def _interpolate_weighted(
         self,
-        scene1: Tuple[datetime, np.ndarray],
-        scene2: Tuple[datetime, np.ndarray],
+        scene1: tuple[datetime, np.ndarray],
+        scene2: tuple[datetime, np.ndarray],
         et0_gap: xr.DataArray,
         et0_values: np.ndarray,
-        target_dates: List[datetime]
-    ) -> Dict[str, np.ndarray]:
+        target_dates: list[datetime]
+    ) -> dict[str, np.ndarray]:
         """Interpolate using weighted ETa method."""
         date1, etrf1 = scene1
         date2, etrf2 = scene2
-        
+
         total_days = (date2 - date1).days
-        
+
         eta_daily = []
         weights = []
-        
+
         for i, target_date in enumerate(target_dates):
             days_from_scene1 = (target_date - date1).days
             days_to_scene2 = (date2 - target_date).days
-            
+
             # Calculate weights (inverse distance weighting)
             w1 = days_to_scene2 / total_days
             w2 = days_from_scene1 / total_days
-            
+
             # Weighted ETa using ETrF from each scene and corresponding ET0
             eta_t = w1 * etrf1 * et0_values[i] + w2 * etrf2 * et0_values[i]
             eta_t = np.clip(eta_t, self.config["min_et_daily"], self.config["max_et_daily"])
-            
+
             eta_daily.append(eta_t)
             weights.append(np.array([w1, w2]))
-        
+
         return {
             'ETa_daily': np.array(eta_daily),
             'dates': target_dates,
             'weights': np.array(weights)
         }
-    
+
     def fetch_et0_forecast(
         self,
-        bbox: List[float],  # [min_lon, min_lat, max_lon, max_lat]
+        bbox: list[float],  # [min_lon, min_lat, max_lon, max_lat]
         start_date: str,    # YYYY-MM-DD
         days: int = None
     ) -> xr.DataArray:
@@ -451,13 +451,13 @@ class ETExtrapolator:
         """
         if days is None:
             days = self.config["extrapolation_days"]
-        
+
         logger.info("Fetching ET0 forecast for %d days from %s", days, start_date)
-        
+
         # Calculate center coordinates for bounding box
         lon = (bbox[0] + bbox[2]) / 2
         lat = (bbox[1] + bbox[3]) / 2
-        
+
         # API URL and parameters
         url = "https://api.open-meteo.com/v1/forecast"
         params = {
@@ -468,7 +468,7 @@ class ETExtrapolator:
             "daily": "et0_fao_evapotranspiration",
             "timezone": "auto"
         }
-        
+
         # Fetch data
         try:
             response = requests.get(url, params=params, timeout=60)
@@ -477,11 +477,11 @@ class ETExtrapolator:
         except Exception as e:
             logger.error("Failed to fetch ET0 forecast: %s", str(e))
             raise
-        
+
         # Convert to xarray DataArray
         dates = pd.date_range(start=start_date, periods=days)
         et0_data = np.array(data['daily']['et0_fao_evapotranspiration'])
-        
+
         return xr.DataArray(
             et0_data,
             dims=['time'],
@@ -495,10 +495,10 @@ class ETExtrapolator:
                 'longitude': lon
             }
         )
-    
+
     def fetch_et0_historical(
         self,
-        bbox: List[float],  # [min_lon, min_lat, max_lon, max_lat]
+        bbox: list[float],  # [min_lon, min_lat, max_lon, max_lat]
         start_date: str,    # YYYY-MM-DD
         end_date: str       # YYYY-MM-DD
     ) -> xr.DataArray:
@@ -517,18 +517,18 @@ class ETExtrapolator:
             xarray DataArray with time dimension covering the date range
         """
         logger.info("Fetching historical ET0 from %s to %s", start_date, end_date)
-        
+
         # Calculate center coordinates for bounding box
         # Check if bbox is in lat/lon (WGS84) or projected coordinates
         min_lon, min_lat, max_lon, max_lat = bbox
-        
+
         # If coordinates are clearly not in WGS84 range (lon: -180 to 180, lat: -90 to 90),
         # assume they are in projected coordinates (e.g., UTM) and convert to lat/lon
         if min_lon < -180 or min_lon > 180 or min_lat < -90 or min_lat > 90:
             # Coordinates are in projected CRS (like UTM meters)
             logger.info("Bbox appears to be in projected CRS, converting to WGS84...")
             try:
-                from pyproj import Transformer, CRS
+                from pyproj import Transformer
                 # Get the CRS from the source raster if available
                 source_crs = self.config.get('source_crs', 'EPSG:32639')  # Default to UTM zone 39N
                 transformer = Transformer.from_crs(source_crs, "EPSG:4326", always_xy=True)
@@ -548,7 +548,7 @@ class ETExtrapolator:
             # Coordinates are already in WGS84
             lon = (min_lon + max_lon) / 2
             lat = (min_lat + max_lat) / 2
-        
+
         # API URL and parameters
         url = "https://archive-api.open-meteo.com/v1/archive"
         params = {
@@ -559,7 +559,7 @@ class ETExtrapolator:
             "daily": "et0_fao_evapotranspiration",
             "timezone": "auto"
         }
-        
+
         # Fetch data
         try:
             response = requests.get(url, params=params, timeout=60)
@@ -568,11 +568,11 @@ class ETExtrapolator:
         except Exception as e:
             logger.error("Failed to fetch historical ET0: %s", str(e))
             raise
-        
+
         # Convert to xarray DataArray
         dates = pd.date_range(start=start_date, end=end_date)
         et0_data = np.array(data['daily']['et0_fao_evapotranspiration'])
-        
+
         return xr.DataArray(
             et0_data,
             dims=['time'],
@@ -588,7 +588,7 @@ class ETExtrapolator:
         )
 
 
-def create_extrapolator(config: Optional[Dict] = None) -> ETExtrapolator:
+def create_extrapolator(config: dict | None = None) -> ETExtrapolator:
     """
     Create an ETExtrapolator instance with optional configuration.
     

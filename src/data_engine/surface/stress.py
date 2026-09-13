@@ -1,6 +1,5 @@
 """Stress indices: CWSI_LST, TVDI (migrated from indices.py), and VSWI."""
 
-from typing import Optional
 import numpy as np
 import xarray as xr
 

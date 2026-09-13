@@ -6,16 +6,16 @@ for grid points within Landsat scene bounding box.
 """
 
 import json
+import logging
+
 import numpy as np
 import pandas as pd
 import requests
 import xarray as xr
-from datetime import datetime, timedelta
-from typing import Dict, List, Tuple, Optional
 from scipy import interpolate
-import logging
 
 logger = logging.getLogger(__name__)
+
 
 class DynamicWeatherFetcher:
     """Fetches weather data dynamically for Landsat scenes."""
@@ -46,7 +46,7 @@ class DynamicWeatherFetcher:
         """
         self.grid_spacing_km = grid_spacing_km
 
-    def fetch_weather_for_scene(self, landsat_dir: str, target_coords: Dict, actual_extent: Tuple = None, target_crs: str = None) -> Dict[str, xr.DataArray]:
+    def fetch_weather_for_scene(self, landsat_dir: str, target_coords: dict, actual_extent: tuple = None, target_crs: str = None) -> dict[str, xr.DataArray]:
         """
         Fetch weather data for a Landsat scene and interpolate to target grid.
 
@@ -64,7 +64,7 @@ class DynamicWeatherFetcher:
         if not mtl_path:
             raise FileNotFoundError(f"MTL.json not found in {landsat_dir}")
 
-        with open(mtl_path, 'r') as f:
+        with open(mtl_path) as f:
             mtl_data = json.load(f)
 
         # Extract bbox
@@ -101,7 +101,7 @@ class DynamicWeatherFetcher:
 
         return result
 
-    def _extract_scene_date(self, mtl_data: Dict) -> str:
+    def _extract_scene_date(self, mtl_data: dict) -> str:
         """
         Extract scene date from MTL data.
 
@@ -117,12 +117,12 @@ class DynamicWeatherFetcher:
             if 'T' in scene_date:
                 scene_date = scene_date.split('T')[0]
             return scene_date
-        
+
         # Fallback to parsing from metadata
         logger.warning("Could not extract scene date from MTL, using placeholder")
         return "2023-04-27"  # Default fallback
 
-    def _fetch_all_points_weather(self, grid_points: List[Tuple[float, float]], scene_date: str) -> Dict:
+    def _fetch_all_points_weather(self, grid_points: list[tuple[float, float]], scene_date: str) -> dict:
         """
         Fetch weather data for all grid points.
 
@@ -150,8 +150,8 @@ class DynamicWeatherFetcher:
 
         return weather_data
 
-    def _interpolate_to_target_grid(self, weather_data: Dict, points: List[Tuple[float, float]],
-                                   target_coords: Dict, target_crs: str = None) -> Dict[str, xr.DataArray]:
+    def _interpolate_to_target_grid(self, weather_data: dict, points: list[tuple[float, float]],
+                                   target_coords: dict, target_crs: str = None) -> dict[str, xr.DataArray]:
         """
         Interpolate weather data from grid points to target spatial grid.
 
@@ -170,24 +170,24 @@ class DynamicWeatherFetcher:
             # Save original coordinates for use in DataArray creation
             original_y_coords = target_coords['y']
             original_x_coords = target_coords['x']
-            
+
             # Handle coordinate types (numpy arrays vs xarray DataArrays)
             if hasattr(original_y_coords, 'values'):
                 original_y_array = original_y_coords.values
             else:
                 original_y_array = np.array(original_y_coords)
-                
+
             if hasattr(original_x_coords, 'values'):
                 original_x_array = original_x_coords.values
             else:
                 original_x_array = np.array(original_x_coords)
-            
+
             logger.debug(f"Original target coords - y shape: {original_y_array.shape}, x shape: {original_x_array.shape}")
         else:
             # No transformation - coordinates are already in lat/lon
             original_y_coords = target_coords['y']
             original_x_coords = target_coords['x']
-        
+
         # Transform target coordinates from projected CRS to WGS84 lat/lon if needed
         # Target coordinates come from Landsat data which is typically in a projected CRS (e.g., UTM in meters)
         # Weather data from Open-Meteo is in WGS84 lat/lon degrees
@@ -195,11 +195,11 @@ class DynamicWeatherFetcher:
             from pyproj import Transformer
             # Create transformer from target CRS to WGS84
             transformer = Transformer.from_crs(target_crs, "EPSG:4326", always_xy=True)
-            
+
             # Extract target coordinate arrays
             target_lats_raw = target_coords['y']
             target_lons_raw = target_coords['x']
-            
+
             # Handle different coordinate types (numpy arrays vs xarray DataArrays)
             if hasattr(target_lats_raw, 'values'):
                 target_lats_array = target_lats_raw.values
@@ -207,17 +207,17 @@ class DynamicWeatherFetcher:
             else:
                 target_lats_array = np.array(target_lats_raw)
                 lats_is_dataarray = False
-                
+
             if hasattr(target_lons_raw, 'values'):
                 target_lons_array = target_lons_raw.values
                 lons_is_dataarray = True
             else:
                 target_lons_array = np.array(target_lons_raw)
                 lons_is_dataarray = False
-            
+
             logger.debug(f"Original target coords - lat range: [{target_lats_array.min()}, {target_lats_array.max()}], lon range: [{target_lons_array.min()}, {target_lons_array.max()}]")
             logger.debug(f"Target CRS: {target_crs}")
-            
+
             # Transform coordinates from projected CRS to WGS84
             # Handle both 1D and 2D coordinate arrays
             if target_lats_array.ndim == 1 and target_lons_array.ndim == 1:
@@ -261,9 +261,9 @@ class DynamicWeatherFetcher:
                         flat_lons_wgs84[i], flat_lats_wgs84[i] = transformer.transform(x, y)
                     target_lons_array = flat_lons_wgs84.reshape(target_lons_array.shape)
                     target_lats_array = flat_lats_wgs84.reshape(target_lats_array.shape)
-            
+
             logger.debug(f"Transformed target coords - lat range: [{target_lats_array.min():.4f}, {target_lats_array.max():.4f}], lon range: [{target_lons_array.min():.4f}, {target_lons_array.max():.4f}]")
-            
+
             # Use transformed coordinates for interpolation
             target_lats = target_lats_array
             target_lons = target_lons_array
@@ -272,13 +272,13 @@ class DynamicWeatherFetcher:
             # Extract target lat/lon grids
             target_lats = target_coords['y']  # Assuming 'y' is latitude
             target_lons = target_coords['x']  # Assuming 'x' is longitude
-            
+
             # Handle different coordinate types (numpy arrays vs xarray DataArrays)
             if hasattr(target_lats, 'values'):
                 target_lats_array = target_lats.values
             else:
                 target_lats_array = np.array(target_lats)
-                
+
             if hasattr(target_lons, 'values'):
                 target_lons_array = target_lons.values
             else:
@@ -316,9 +316,9 @@ class DynamicWeatherFetcher:
         # Ensure we have the correct number of target points
         expected_size = target_shape[0] * target_shape[1]
         actual_size = len(target_lat_flat)
-        
+
         logger.debug(f"Target grid analysis - shape: {target_shape}, expected size: {expected_size}, actual size: {actual_size}")
-        
+
         if actual_size != expected_size:
             logger.error(f"Target grid size mismatch: expected {expected_size}, got {actual_size}")
             raise ValueError(f"Target coordinate arrays don't match target shape {target_shape}. "
@@ -334,7 +334,7 @@ class DynamicWeatherFetcher:
             if var not in weather_data:
                 logger.warning(f"Variable {var} not in weather data, skipping")
                 continue
-                
+
             logger.debug(f"Interpolating {var}: {len(weather_data[var])} source points, {len(target_lat_flat)} target points, target shape {target_shape}")
 
             # Create target points as (n, 2) array
@@ -378,7 +378,7 @@ class DynamicWeatherFetcher:
                     coords={'y': original_y_coords, 'x': original_x_coords},
                     name=var
                 )
-                
+
             except ValueError as e:
                 if "cannot reshape" in str(e) or "size" in str(e):
                     logger.error(f"Reshape error for variable {var}: {e}")
@@ -390,7 +390,7 @@ class DynamicWeatherFetcher:
 
         return result
 
-    def _create_grid_points(self, bbox: List[float]) -> List[Tuple[float, float]]:
+    def _create_grid_points(self, bbox: list[float]) -> list[tuple[float, float]]:
         """
         Create grid points within bounding box at specified spacing.
 
@@ -422,7 +422,7 @@ class DynamicWeatherFetcher:
 
         return points
 
-    def _fetch_weather_for_point(self, lat: float, lon: float, date: str) -> Optional[Dict]:
+    def _fetch_weather_for_point(self, lat: float, lon: float, date: str) -> dict | None:
         """
         Fetch weather data for a single point and date.
 
@@ -466,7 +466,7 @@ class DynamicWeatherFetcher:
             logger.warning(f"Failed to fetch weather for ({lat}, {lon}) on {date}: {e}")
             return None
 
-    def _extract_overpass_data(self, data: Dict, date: str) -> Dict:
+    def _extract_overpass_data(self, data: dict, date: str) -> dict:
         """
         Extract weather data at Landsat overpass time (10:30 local).
 
@@ -487,7 +487,7 @@ class DynamicWeatherFetcher:
                 et0_values = daily_data['et0_fao_evapotranspiration']
                 if et0_values:
                     result['et0_fao_evapotranspiration'] = et0_values[0]
-            
+
             if 'shortwave_radiation_sum' in daily_data:
                 # Daily shortwave radiation sum is for the whole day (MJ/m²/day)
                 sw_rad_sum_values = daily_data['shortwave_radiation_sum']

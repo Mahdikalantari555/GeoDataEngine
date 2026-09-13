@@ -1,11 +1,12 @@
 """METRIC ETa processing pipeline."""
 
-from typing import Dict, List, Optional, Tuple, Union, Any
+import os
 from datetime import datetime
+from typing import Any
+
 import numpy as np
 import xarray as xr
 from loguru import logger
-import os
 
 # Import decision logic from calibration
 from ..calibration.dt_calibration import CalibrationStatus
@@ -14,7 +15,7 @@ from ..calibration.dt_calibration import CalibrationStatus
 class METRICPipeline:
     """Main processing pipeline for METRIC ETa model."""
 
-    def __init__(self, config: Optional[Dict] = None, roi_path: Optional[str] = None):
+    def __init__(self, config: dict | None = None, roi_path: str | None = None):
         """Initialize METRIC processing pipeline."""
         self.config = config or {}
         self.roi_path = roi_path
@@ -28,13 +29,13 @@ class METRICPipeline:
         self._roi_extent = None          # Store ROI extent after clipping
         self._roi_mask = None            # Store boolean mask for ROI boundaries
         logger.info("Initialized METRICPipeline")
-    
+
     def run(
-        self, landsat_dir: str, meteo_data: Dict,
-        output_dir: Optional[str] = None, roi_path: Optional[str] = None,
+        self, landsat_dir: str, meteo_data: dict,
+        output_dir: str | None = None, roi_path: str | None = None,
         save_visualization: bool = False,
-        output_categories: Optional[List[str]] = None
-    ) -> Dict[str, xr.DataArray]:
+        output_categories: list[str] | None = None
+    ) -> dict[str, xr.DataArray]:
         """Run complete METRIC ETa processing pipeline."""
         import logging
 
@@ -132,13 +133,13 @@ class METRICPipeline:
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
-    
+
     def load_data(
         self,
-        landsat_source: Union[str, Dict],
-        meteo_data: Dict,
-        dem_path: Optional[str] = None,
-        roi_path: Optional[str] = None
+        landsat_source: str | dict,
+        meteo_data: dict,
+        dem_path: str | None = None,
+        roi_path: str | None = None
     ) -> None:
         """Load input data into DataCube from various sources.
         
@@ -152,11 +153,9 @@ class METRICPipeline:
             dem_path: Path to DEM file (optional)
             roi_path: Path to ROI GeoJSON (optional, for clipping)
         """
-        from ..io import LandsatReader, MeteoReader, PlanetaryComputerLandsatFetcher
-        from ..core.datacube import DataCube
-        import os
         import logging
-        from datetime import datetime
+
+        from ..core.datacube import DataCube
 
         logger = logging.getLogger(__name__)
 
@@ -194,23 +193,23 @@ class METRICPipeline:
                 raise TypeError(
                     f"landsat_source must be str or dict, got {type(landsat_source)}"
                 )
-            
+
             logger.info("Data loading completed successfully")
             logger.info("=" * 60)
             logger.info("METRICPipeline.load_data() - COMPLETED")
             logger.info("=" * 60)
-            
+
         except Exception as e:
             logger.error(f"Error loading data: {e}")
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
-    
+
     def _load_from_local_directory(
         self,
         scene_path: str,
-        meteo_data: Dict,
-        roi_path: Optional[str]
+        meteo_data: dict,
+        roi_path: str | None
     ) -> None:
         """Load Landsat data from a local directory (original implementation).
         
@@ -219,8 +218,9 @@ class METRICPipeline:
             meteo_data: Meteorological data dictionary
             roi_path: Path to ROI GeoJSON
         """
-        from ..io import LandsatReader
         import logging
+
+        from ..io import LandsatReader
         logger = logging.getLogger(__name__)
 
         logger.info("=" * 60)
@@ -254,7 +254,6 @@ class METRICPipeline:
             band_data = landsat_cube.get(band_name)
             # Ensure rioxarray integration is available for spatial operations
             if not hasattr(band_data, 'rio'):
-                import rioxarray
                 band_data = band_data.rio.write_crs(landsat_cube.crs)
             self.data.add(band_name, band_data)
         logger.info(f"Main cube now has bands: {self.data.bands()}")
@@ -325,16 +324,16 @@ class METRICPipeline:
             import traceback
             logger.error(f"Traceback: {traceback.format_exc()}")
             raise
-        
+
         logger.info("=" * 60)
         logger.info("METRICPipeline._load_from_local_directory() - COMPLETED")
         logger.info("=" * 60)
-    
+
     def _load_from_planetary_computer(
         self,
-        config: Dict,
-        meteo_data: Dict,
-        roi_path: Optional[str]
+        config: dict,
+        meteo_data: dict,
+        roi_path: str | None
     ) -> None:
         """Load Landsat data from Planetary Computer.
         
@@ -348,9 +347,10 @@ class METRICPipeline:
             meteo_data: Meteorological data dictionary (currently not used, weather fetched dynamically)
             roi_path: Path to ROI GeoJSON (optional, for clipping)
         """
-        from ..io import PlanetaryComputerLandsatFetcher
         import logging
         from datetime import datetime, timedelta
+
+        from ..io import PlanetaryComputerLandsatFetcher
         logger = logging.getLogger(__name__)
 
         # Extract required config
@@ -358,31 +358,31 @@ class METRICPipeline:
             raise ValueError("Planetary Computer source requires 'roi' in config")
         if 'date' not in config:
             raise ValueError("Planetary Computer source requires 'date' in config")
-        
+
         roi_geometry = config['roi']
         target_date_str = config['date']
         max_cloud_cover = config.get('max_cloud_cover', 70.0)
         cache_dir = config.get('cache_dir')
         use_cache = config.get('use_cache', True)
-        
+
         # Parse target date
         try:
             target_date = datetime.fromisoformat(target_date_str)
         except ValueError:
             raise ValueError(f"Invalid date format: {target_date_str}. Use YYYY-MM-DD")
-        
+
         # Create date range (single day, but can be expanded with fallback)
         # For now, just use the single date. Could add fallback logic later.
         date_range = (target_date, target_date + timedelta(days=1) - timedelta(seconds=1))
-        
+
         # Initialize fetcher
-        logger.info(f"Initializing PlanetaryComputerLandsatFetcher")
+        logger.info("Initializing PlanetaryComputerLandsatFetcher")
         fetcher = PlanetaryComputerLandsatFetcher(
             max_cloud_cover=max_cloud_cover,
             cache_dir=cache_dir,
             use_cache=use_cache
         )
-        
+
         # Fetch scenes (will return list, typically one scene for a single date)
         logger.info(f"Fetching scenes from Planetary Computer for ROI and date {target_date_str}")
         try:
@@ -395,17 +395,17 @@ class METRICPipeline:
         except Exception as e:
             logger.error(f"Failed to fetch scenes from Planetary Computer: {e}")
             raise
-                
+
         # For now, take the first (best) scene if multiple are returned
         # In the future, could handle multiple scenes differently
         cube = datacubes[0]
         if len(datacubes) > 1:
             logger.warning(f"Found {len(datacubes)} scenes, using the first one (by date). "
                           "Consider refining date range or cloud cover filter.")
-        
+
         # Store the cube in self.data
         self.data = cube
-        
+
         # Load ROI geometry for clipping (use provided roi_path or extract from config)
         if roi_path:
             roi_clip_path = roi_path
@@ -414,7 +414,7 @@ class METRICPipeline:
         else:
             # Try to use a default ROI file if available
             roi_clip_path = self.roi_path or config.get('roi_path')
-        
+
         # Load ROI for clipping
         try:
             import geopandas as gpd
@@ -426,7 +426,7 @@ class METRICPipeline:
         except Exception as e:
             logger.warning(f"Failed to load ROI for clipping: {e}. Proceeding without ROI clipping.")
             self._roi_geom = None
-        
+
         # Weather data: For Planetary Computer, we still need to fetch weather dynamically
         # Get full scene extent and convert to lat/lon for weather fetching
         full_scene_bounds = cube.extent  # (min_x, min_y, max_x, max_y) in projected CRS
@@ -437,37 +437,37 @@ class METRICPipeline:
         min_lon, min_lat = transformer.transform(full_scene_bounds[0], full_scene_bounds[1])
         max_lon, max_lat = transformer.transform(full_scene_bounds[2], full_scene_bounds[3])
         full_scene_extent = (min_lon, min_lat, max_lon, max_lat)
-        
+
         # Get target coordinates from cube
         sample_band = next(iter(cube.data.values()))
         target_coords = {dim: sample_band.coords[dim] for dim in sample_band.dims}
-        
+
         # Initialize dynamic weather fetcher
         from ..io.dynamic_weather_fetcher import DynamicWeatherFetcher
         weather_config = self.config.get('weather', {})
         grid_spacing = weather_config.get('grid_spacing_km', 9.0)
         weather_fetcher = DynamicWeatherFetcher(grid_spacing_km=grid_spacing)
-        
+
         try:
             # Fetch spatially varying weather data using full scene extent
             weather_arrays = weather_fetcher.fetch_weather_for_scene(
                 target_date_str, target_coords, full_scene_extent, target_crs=cube.crs
             )
-            
+
             # Convert temperature from Celsius to Kelvin
             if "temperature_2m" in weather_arrays:
                 weather_arrays["temperature_2m"] = weather_arrays["temperature_2m"] + 273.15
-            
+
             # Add weather data to cube
             for var_name, array in weather_arrays.items():
                 self.data.add(var_name, array)
-            
+
             logger.info(f"Spatially varying weather data loaded for {len(weather_arrays)} variables")
-            
+
         except Exception as e:
             logger.error(f"Failed to fetch dynamic weather data: {e}")
             raise
-        
+
         logger.info("Planetary Computer data loading completed successfully")
 
     def preprocess(self) -> None:
@@ -530,7 +530,7 @@ class METRICPipeline:
         except Exception as e:
             logger.error(f"Error in preprocessing: {e}")
             raise
-    
+
     def clip_to_roi(self) -> None:
         """Clip spatial scene bands to ROI boundary during preprocessing.
         
@@ -541,68 +541,67 @@ class METRICPipeline:
         Weather data (spatially uniform) is not clipped since it doesn't have spatial extent.
         """
         import logging
-        
+
         logger = logging.getLogger(__name__)
-        
+
         try:
             if self.data is None:
                 raise ValueError("No data loaded. Call load_data() first.")
-            
+
             if not hasattr(self, '_roi_geom'):
                 logger.warning("No ROI geometry available, skipping ROI clipping")
                 return
-            
+
             logger.info("Clipping spatial scene bands to ROI boundary")
-            
+
             # Get list of all bands in the data cube
             all_bands = self.data.bands()
             clipped_bands = []
             skipped_bands = []
-            
+
             for band_name in all_bands:
                 band_data = self.data.get(band_name)
-                
+
                 # Skip bands that don't have CRS (spatially uniform data like weather)
                 if not hasattr(band_data, 'rio') or band_data.rio.crs is None:
                     logger.debug(f"Skipping {band_name} - no spatial CRS (spatially uniform data)")
                     skipped_bands.append(band_name)
                     continue
-                
+
                 # Ensure rioxarray integration is available for spatial operations
                 if not hasattr(band_data, 'rio'):
-                    import rioxarray
                     band_data = band_data.rio.write_crs(self.data.crs)
-                
+
                 # Check if CRS is available
                 if band_data.rio.crs is None:
                     logger.debug(f"Skipping {band_name} - no CRS available")
                     skipped_bands.append(band_name)
                     continue
-                
+
                 try:
                     # Clip to ROI geometry
                     clipped_band = band_data.rio.clip(
-                        [self._roi_geom], 
-                        crs=band_data.rio.crs, 
+                        [self._roi_geom],
+                        crs=band_data.rio.crs,
                         drop=False
                     )
-                    
+
                     # Replace original band with clipped version
                     self.data.add(band_name, clipped_band)
                     clipped_bands.append(band_name)
-                    
+
                     logger.debug(f"Clipped {band_name} to ROI")
                 except Exception as e:
                     logger.warning(f"Failed to clip {band_name}: {e}")
                     skipped_bands.append(band_name)
                     continue
-            
+
             if clipped_bands:
                 logger.info(f"Clipped {len(clipped_bands)} spatial bands to ROI: {clipped_bands}")
-                
+
                 if skipped_bands:
                     logger.info(f"Skipped {len(skipped_bands)} non-spatial bands: {skipped_bands}")
-                
+
                 # Update data extent and transform based on clipped data
                 sample_clipped = self.data.get(clipped_bands[0])
                 if hasattr(sample_clipped, 'rio'):
@@ -611,31 +610,31 @@ class METRICPipeline:
                 else:
                     # Fallback if rioxarray is not available
                     logger.warning("rioxarray not available for extent update")
-                
+
                 logger.info(f"Updated data extent to ROI boundaries: {self.data.extent}")
-                
+
                 # Calculate actual pixel counts from first clipped band
                 sample_band = self.data.get(clipped_bands[0])
                 if hasattr(sample_band, 'shape'):
                     clipped_pixels = np.prod(sample_band.shape)
                     logger.info(f"ROI clipping completed: working with {clipped_pixels} pixels in clipped area")
-                
+
                 # Store clipping information for enhanced QA coverage calculation
                 # Store the original extent before clipping (from initial data loading)
                 if not hasattr(self, '_original_extent') or self._original_extent is None:
                     self._original_extent = self.data.extent  # This is the original extent before clipping
                 self._roi_extent = self.data.extent
                 self._roi_mask = self._create_roi_mask_from_clipped_data(sample_band)
-                
+
             else:
                 logger.warning("No spatial bands found to clip")
                 if skipped_bands:
                     logger.info(f"All bands were non-spatial: {skipped_bands}")
-                
+
         except Exception as e:
             logger.error(f"Error clipping to ROI: {e}")
             raise
-    
+
     def _create_roi_mask_from_clipped_data(self, sample_band) -> np.ndarray:
         """
         Create boolean mask indicating which pixels are within ROI boundaries.
@@ -650,25 +649,25 @@ class METRICPipeline:
             # Log the shape of the input band to verify clipping worked
             if hasattr(sample_band, 'shape'):
                 logger.debug(f"ROI mask input band shape: {sample_band.shape}")
-            
+
             # Create mask based on non-NaN values in the clipped band
             # This represents the actual ROI area after clipping
             if hasattr(sample_band, 'values'):
                 roi_mask = ~np.isnan(sample_band.values)
             else:
                 roi_mask = ~np.isnan(sample_band)
-            
+
             # Log valid pixels vs total pixels in the ROI-clipped area
             valid_count = np.sum(roi_mask)
             total_count = roi_mask.size
             logger.debug(f"Created ROI mask: {valid_count} valid pixels out of {total_count} pixels in ROI area")
-            
+
             # Warn if the total count matches full scene size (clipping may have failed)
             if total_count > 500000:  # Threshold for typical scene size
                 logger.warning(f"ROI pixel count ({total_count}) suggests clipping may have failed - this is full scene size")
-            
+
             return roi_mask
-            
+
         except Exception as e:
             logger.warning(f"Failed to create ROI mask: {e}")
             # Fallback: create full mask if coordinates not available
@@ -676,8 +675,8 @@ class METRICPipeline:
                 return np.ones(sample_band.shape, dtype=bool)
             else:
                 return np.array([True])
-    
-    def calculate_qa_coverage_enhanced(self, ndvi: xr.DataArray) -> Tuple[float, int, int]:
+
+    def calculate_qa_coverage_enhanced(self, ndvi: xr.DataArray) -> tuple[float, int, int]:
         """
         Calculate QA coverage counting only cloud-masked pixels as loss.
         
@@ -697,24 +696,31 @@ class METRICPipeline:
             # Count valid pixels (not NaN from cloud masking)
             valid_pixels = np.sum(~np.isnan(ndvi.values))
             total_pixels = ndvi.size
-            
+
             # Calculate QA coverage
             qa_coverage = valid_pixels / total_pixels
-            
+
             logger.debug(f"Cloud-mask QA calculation: {valid_pixels}/{total_pixels} = {qa_coverage:.3f}")
             return qa_coverage, valid_pixels, total_pixels
-            
+
         except Exception as e:
             logger.error(f"Error in cloud-mask QA calculation: {e}")
             # Fallback to original behavior on error
             valid_pixels = np.sum(~np.isnan(ndvi.values))
             total_pixels = ndvi.size
             return valid_pixels / total_pixels, valid_pixels, total_pixels
-    
+
     def calculate_surface_properties(self) -> None:
         """Calculate surface properties."""
-        from ..surface import VegetationIndices, AlbedoCalculator, EmissivityCalculator, RoughnessCalculator, LSTCalculator
         import logging
+
+        from ..surface import (
+            AlbedoCalculator,
+            EmissivityCalculator,
+            LSTCalculator,
+            RoughnessCalculator,
+            VegetationIndices,
+        )
 
         logger = logging.getLogger(__name__)
 
@@ -753,7 +759,7 @@ class METRICPipeline:
 
             # Calculate stress indices (CWSI_LST, TVDI, VSWI) if ndvi and lst available
             try:
-                from ..surface.stress import CWSILSTCalculator, TVDICalculator, VSWI
+                from ..surface.stress import VSWI, CWSILSTCalculator, TVDICalculator
                 if "ndvi" in self.data.bands() and "lst" in self.data.bands():
                     CWSILSTCalculator().compute(self.data)
                     logger.info("CWSI_LST calculation completed")
@@ -791,8 +797,8 @@ class METRICPipeline:
             return
 
         try:
-            from ..surface.moisture import NDMI, MSI, NMDI, MNDWI
-            from ..surface.productivity import NIRv, GCI
+            from ..surface.moisture import MNDWI, MSI, NDMI, NMDI
+            from ..surface.productivity import GCI, NIRv
             from ..surface.salinity import NDSI, SI_T
 
             idx_classes = [
@@ -821,8 +827,9 @@ class METRICPipeline:
 
     def calculate_radiation_balance(self) -> None:
         """Calculate radiation balance components."""
-        from ..radiation import ShortwaveRadiation, LongwaveRadiation, NetRadiation
         import logging
+
+        from ..radiation import LongwaveRadiation, NetRadiation, ShortwaveRadiation
 
         logger = logging.getLogger(__name__)
 
@@ -850,7 +857,7 @@ class METRICPipeline:
             logger.error(f"Error calculating radiation balance: {e}")
             raise
 
-    def validate_scene(self) -> Tuple[bool, str]:
+    def validate_scene(self) -> tuple[bool, str]:
         """Perform scene-level pre-validation (HARD REJECT) checks.
         
         Returns:
@@ -873,7 +880,7 @@ class METRICPipeline:
             # Get required data
             ndvi = self.data.get("ndvi")
             rn = self.data.get("R_n")
-            
+
             # Check if essential data is available
             if ndvi is None:
                 return True, "NDVI data not available for validation"
@@ -899,7 +906,7 @@ class METRICPipeline:
                 reason = f"Cloud coverage too high: {cloud_coverage:.3f} > {cloud_reject_threshold:.2f}"
                 logger.error(reason)
                 return rejected, reason
-            
+
             # Log if cloud coverage is moderate (between 30-70%) but continue processing
             if cloud_coverage > 0.30:
                 logger.info(f"Cloud coverage is moderate: {cloud_coverage:.3f}. Processing will continue.")
@@ -909,8 +916,8 @@ class METRICPipeline:
 
         except Exception as e:
             logger.error(f"Error in scene validation: {e}")
-            return True, f"Validation error: {str(e)}"
-    
+            return True, f"Validation error: {e!s}"
+
     def calculate_soil_heat_flux(self) -> None:
         """Calculate soil heat flux (G) independently of calibration.
         
@@ -922,8 +929,9 @@ class METRICPipeline:
         This method computes G BEFORE calibration so it can be used
         for anchor pixel selection (Rn-G optimization).
         """
-        from ..energy_balance import SoilHeatFlux, SoilHeatFluxConfig
         import logging
+
+        from ..energy_balance import SoilHeatFlux, SoilHeatFluxConfig
 
         logger = logging.getLogger(__name__)
 
@@ -989,15 +997,16 @@ class METRICPipeline:
         except Exception as e:
             logger.error(f"Error calculating soil heat flux: {e}")
             raise
-    
+
     def calculate_energy_balance(self) -> None:
         """Calculate energy balance components (H and LE) with calibration.
         
         Assumes Rn and G are already computed.
         Uses anchor pixel calibration from METRIC to compute H and LE.
         """
-        from ..energy_balance import EnergyBalanceManager
         import logging
+
+        from ..energy_balance import EnergyBalanceManager
 
         logger = logging.getLogger(__name__)
 
@@ -1010,7 +1019,7 @@ class METRICPipeline:
             # Check if Rn and G are available
             rn = self.data.get("R_n")
             g_flux = self.data.get("G")
-            
+
             if rn is None:
                 raise ValueError("Net radiation (R_n) not found. Calculate radiation balance first.")
             if g_flux is None:
@@ -1042,27 +1051,27 @@ class METRICPipeline:
         """
         import logging
         logger = logging.getLogger(__name__)
-        
+
         if data is None:
             logger.error(f"{data_name} data is None")
             raise ValueError(f"{data_name} data is None")
-            
+
         # Check if data has values attribute (xarray DataArray)
         if hasattr(data, 'values'):
             values = data.values
         else:
             values = data
-            
+
         # Check for empty arrays
         if values.size == 0:
             logger.error(f"{data_name} has empty array")
             raise ValueError(f"{data_name} has empty array")
-            
+
         # Check if all values are NaN
         if np.all(np.isnan(values)):
             logger.error(f"{data_name} contains only NaN values")
             raise ValueError(f"{data_name} contains only NaN values")
-            
+
         return float(np.nanmean(values))
 
     def _get_air_temperature(self) -> float:
@@ -1076,21 +1085,21 @@ class METRICPipeline:
         """
         import logging
         logger = logging.getLogger(__name__)
-        
+
         temp_2m = self.data.get("temperature_2m")
         config_temp = self.config.get('temperature', {})
         default_temp = config_temp.get('default_kelvin', 293.15)  # 20°C in Kelvin
-        
+
         if temp_2m is not None:
             try:
                 # Handle both spatially varying and uniform temperature data
                 air_temperature = self._safe_nanmean(temp_2m, "temperature_2m")
-                logger.info(f"Air temperature: {air_temperature:.2f} K ({air_temperature-273.15:.2f} °C)")
+                logger.info(f"Air temperature: {air_temperature:.2f} K ({air_temperature - 273.15:.2f} °C)")
                 return air_temperature
             except Exception as e:
                 logger.warning(f"Failed to process temperature data: {e}, using default")
-        
-        logger.warning(f"Using default air temperature: {default_temp} K ({default_temp-273.15:.2f} °C)")
+
+        logger.warning(f"Using default air temperature: {default_temp} K ({default_temp - 273.15:.2f} °C)")
         return default_temp
 
     def _get_et0_daily(self) -> float:
@@ -1115,12 +1124,13 @@ class METRICPipeline:
         default_et0 = 5.0  # mm/day
         logger.warning(f"No ET0 data available, using default ET0_daily = {default_et0} mm/day")
         return default_et0
-    
+
     def calibrate(self) -> None:
         """Apply unified METRIC calibration pipeline with decision logic and logging."""
+        import logging
+
         from ..calibration import AnchorPixelSelector, DTCalibration
         from ..energy_balance import EnergyBalanceManager
-        import logging
 
         logger = logging.getLogger(__name__)
 
@@ -1137,7 +1147,7 @@ class METRICPipeline:
             # Select anchor pixel selector
             calibration_config = self.config.get('calibration', {})
             method = calibration_config.get('method', 'automatic')
-            
+
             if method == 'automatic':
                 # Use standard AnchorSelector with built-in automatic method
                 anchor_selector = AnchorPixelSelector(method='automatic')
@@ -1203,11 +1213,12 @@ class METRICPipeline:
         except Exception as e:
             logger.error(f"Error in unified METRIC calibration: {e}")
             raise
-    
+
     def calculate_et(self) -> None:
         """Calculate evapotranspiration."""
-        from ..et import InstantaneousET, DailyET, ETQuality
         import logging
+
+        from ..et import DailyET, ETQuality, InstantaneousET
 
         logger = logging.getLogger(__name__)
 
@@ -1278,7 +1289,7 @@ class METRICPipeline:
 
             if temp_2m is not None:
                 valid_temp = temp_2m.values[~np.isnan(temp_2m.values)]
-                logger.info(f"Air Temperature (Tₐ): {len(valid_temp)} valid pixels, range [{np.min(valid_temp)-273.15:.1f}, {np.max(valid_temp)-273.15:.1f}] °C, mean={np.mean(valid_temp)-273.15:.1f} °C")
+                logger.info(f"Air Temperature (Tₐ): {len(valid_temp)} valid pixels, range [{np.min(valid_temp) - 273.15:.1f}, {np.max(valid_temp) - 273.15:.1f}] °C, mean={np.mean(valid_temp) - 273.15:.1f} °C")
 
             if et0_daily is not None:
                 valid_et0 = et0_daily.values[~np.isnan(et0_daily.values)]
@@ -1292,7 +1303,7 @@ class METRICPipeline:
             ts_kelvin = self.data.get("lst")
             if ts_kelvin is not None:
                 valid_ts = ts_kelvin.values[~np.isnan(ts_kelvin.values)]
-                logger.info(f"Surface Temperature (Ts): {len(valid_ts)} valid pixels, range [{np.min(valid_ts)-273.15:.1f}, {np.max(valid_ts)-273.15:.1f}] °C, mean={np.mean(valid_ts)-273.15:.1f} °C")
+                logger.info(f"Surface Temperature (Ts): {len(valid_ts)} valid pixels, range [{np.min(valid_ts) - 273.15:.1f}, {np.max(valid_ts) - 273.15:.1f}] °C, mean={np.mean(valid_ts) - 273.15:.1f} °C")
 
             logger.info("=== STARTING INSTANTANEOUS ET CALCULATION ===")
 
@@ -1389,15 +1400,15 @@ class METRICPipeline:
             self.data.add("ET_quality_class", quality_result["quality_class"])
 
             logger.info("=== ETa CLASSIFICATION ===")
-            
+
             # Create single ETa classification layer with values 1-7
             et_daily = self.data.get("ET_daily")
             if et_daily is not None:
                 et_values = et_daily.values
-                
+
                 # Initialize with 0 (no class / NaN)
                 eta_class = np.zeros(et_values.shape, dtype=np.uint8)
-                
+
                 # Assign class values based on ETa range
                 # Class 1: 0-3 mm/day
                 eta_class[(et_values >= 0) & (et_values < 3)] = 1
@@ -1413,29 +1424,29 @@ class METRICPipeline:
                 eta_class[(et_values >= 15) & (et_values < 20)] = 6
                 # Class 7: 20+ mm/day
                 eta_class[et_values >= 20] = 7
-                
+
                 self.data.add("ETa_class", eta_class)
-                
+
                 logger.info("ETa classification layer created: 1=0-3, 2=3-6, 3=6-9, 4=9-12, 5=12-15, 6=15-20, 7=20+")
-            
+
             logger.info("=== CWSI_ET CALCULATION ===")
 
             # Calculate CWSI_ET = 1 - (ETa / ET0)
             et_daily = self.data.get("ET_daily")
             et0_daily = self.data.get("et0_fao_evapotranspiration")
-            
+
             if et_daily is not None and et0_daily is not None:
                 et_values = et_daily.values
                 et0_values = et0_daily.values
-                
+
                 # Handle division - avoid division by zero
                 with np.errstate(divide='ignore', invalid='ignore'):
                     cwsi = 1.0 - (et_values / et0_values)
                     # Set invalid values (NaN, inf) to NaN
                     cwsi = np.where(np.isfinite(cwsi), cwsi, np.nan)
-                
+
                 self.data.add("CWSI_ET", cwsi)
-                
+
                 # Log statistics
                 valid_cwsi = cwsi[~np.isnan(cwsi)]
                 if len(valid_cwsi) > 0:
@@ -1452,8 +1463,8 @@ class METRICPipeline:
         except Exception as e:
             logger.error(f"Error calculating ET: {e}")
             raise
-    
-    def get_results(self) -> Dict[str, xr.DataArray]:
+
+    def get_results(self) -> dict[str, xr.DataArray]:
         """Get processing results."""
         if self.data is None:
             raise ValueError("No data available. Run the pipeline first.")
@@ -1487,7 +1498,7 @@ class METRICPipeline:
 
         return results
 
-    def get_scene_quality(self) -> Dict[str, Any]:
+    def get_scene_quality(self) -> dict[str, Any]:
         """
         Get scene quality information based on calibration decision.
 
@@ -1513,9 +1524,9 @@ class METRICPipeline:
             "valid": self._calibration_result.valid
         }
 
-    def save_results(self, output_dir: str, output_products: Optional[list] = None,
+    def save_results(self, output_dir: str, output_products: list | None = None,
                      save_visualization: bool = False,
-                     output_categories: Optional[list] = None) -> None:
+                     output_categories: list | None = None) -> None:
         """Save results to output directory with configurable output products.
 
         Args:
@@ -1527,10 +1538,10 @@ class METRICPipeline:
             save_visualization: When True, generate overview_<date>.png and
                                 et_map_<date>.png. When False, skip them.
         """
-        from ..output import OutputWriter, Visualization
-        import os
         import logging
-        from datetime import datetime
+        import os
+
+        from ..output import OutputWriter, Visualization
 
         logger = logging.getLogger(__name__)
 
@@ -1555,7 +1566,7 @@ class METRICPipeline:
                     for entry in cat:
                         name_lookup[entry[0]] = entry
                 products_to_use = [name_lookup[p] for p in products_to_use if p in name_lookup]
-            
+
             # Determine output categories: prefer parameter, then config, then default
             output_categories = output_categories or self.config.get('output_categories')
             if output_categories is None:
@@ -1575,16 +1586,16 @@ class METRICPipeline:
                 output_categories=output_categories,
                 aoi_name=aoi_name
             )
-            
+
             # Get scene information for naming
             scene_id = self.data.metadata.get('scene_id', 'METRIC')
             date_str = self.data.acquisition_time.strftime('%Y%m%d') if self.data.acquisition_time else 'unknown'
-            
+
             # Debug: Log the values being passed to writer
             logger.info(f"save_results: scene_id='{scene_id}'")
             logger.info(f"save_results: date_str='{date_str}'")
             logger.info(f"save_results: acquisition_time='{self.data.acquisition_time}'")
-            
+
             # Use the actual calibration result from the calibration step
             # The calibration result should be stored during the calibrate() step
             if hasattr(self, '_calibration_result'):
@@ -1609,13 +1620,13 @@ class METRICPipeline:
                     hot_pixel_x=0, hot_pixel_y=0,
                     rn_hot=np.nan, g_hot=np.nan, h_hot=np.nan, le_hot=np.nan
                 )
-            
+
             # Write ET products with configurable output selection
             output_files = writer.write_et_products(
                 self.data, scene_id, date_str, actual_calibration,
                 products=products_to_use
             )
-            
+
             logger.info(f"ET products saved: {list(output_files.keys())}")
 
             # Write RGB true-color image
@@ -1645,7 +1656,7 @@ class METRICPipeline:
 
             # Save metadata
             metadata_path = os.path.join(output_dir, "processing_metadata.json")
-            
+
             # Build quality information from scene statistics
             quality_info = {
                 'scene_quality': str(self._scene_quality),
@@ -1662,7 +1673,7 @@ class METRICPipeline:
                     'mean': None
                 }
             }
-            
+
             # Calculate statistics for quality info
             ndvi = self.data.get('ndvi')
             if ndvi is not None:
@@ -1671,7 +1682,7 @@ class METRICPipeline:
                     quality_info['ndvi_range']['min'] = float(np.min(ndvi_values))
                     quality_info['ndvi_range']['max'] = float(np.max(ndvi_values))
                     quality_info['ndvi_range']['mean'] = float(np.mean(ndvi_values))
-            
+
             ts = self.data.get('lst')
             if ts is not None:
                 ts_values = ts.values[~np.isnan(ts.values)]
@@ -1679,13 +1690,13 @@ class METRICPipeline:
                     quality_info['temperature_range']['min'] = float(np.min(ts_values))
                     quality_info['temperature_range']['max'] = float(np.max(ts_values))
                     quality_info['temperature_range']['mean'] = float(np.mean(ts_values))
-            
+
             # Calculate valid pixel fraction
             if ndvi is not None:
                 valid_pixels = np.sum(~np.isnan(ndvi.values))
                 total_pixels = ndvi.size
                 quality_info['valid_pixels'] = float(valid_pixels / total_pixels)
-            
+
             writer.write_metadata_file(
                 self.data, actual_calibration, scene_id, date_str,
                 quality_info=quality_info
@@ -1696,7 +1707,7 @@ class METRICPipeline:
         except Exception as e:
             logger.error(f"Error saving results: {e}")
             raise
-    
+
     def clip_outputs_to_aoi(self) -> None:
         """Clip final ET outputs to AOI boundary.
         
@@ -1707,18 +1718,17 @@ class METRICPipeline:
         This method is kept for backward compatibility but is now a no-op.
         """
         import logging
-        
+
         logger = logging.getLogger(__name__)
-        
+
         try:
             if self.data is None:
                 raise ValueError("No data available. Run the pipeline first.")
-            
+
             logger.info("ROI clipping is now performed during preprocessing - no final output clipping needed")
             logger.info("All data is already clipped to ROI boundaries from preprocessing step")
-            
+
         except Exception as e:
             logger.error(f"Error in clip_outputs_to_aoi: {e}")
             # Don't raise exception to avoid breaking the pipeline
             logger.warning("Continuing pipeline execution")
-

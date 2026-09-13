@@ -5,11 +5,11 @@ Provides a Logger class for consistent logging across the project
 with Loguru-based logging, colored output, and progress bar integration.
 """
 
-from loguru import logger
 import sys
-from typing import Optional
 from contextlib import contextmanager
 from pathlib import Path
+
+from loguru import logger
 
 
 class Logger:
@@ -23,7 +23,7 @@ class Logger:
     - Context manager support
     - Progress bar integration
     """
-    
+
     _loggers: dict = {}
     _default_config: dict = {
         "format": "<green>{time:YYYY-MM-DD HH:mm:ss}</green> | <level>{level: <8}</level> | "
@@ -37,11 +37,11 @@ class Logger:
         "retention": "10 files",
         "compression": "gz"
     }
-    
+
     @staticmethod
     def setup(
         name: str = "data_engine",
-        log_file: Optional[str] = None,
+        log_file: str | None = None,
         level: str = "INFO",
         console: bool = True,
         rotation: str = "10 MB",
@@ -60,7 +60,7 @@ class Logger:
         """
         # Remove default handler
         logger.remove()
-        
+
         # Add console handler
         if console:
             logger.add(
@@ -71,12 +71,12 @@ class Logger:
                 backtrace=True,
                 diagnose=True
             )
-        
+
         # Add file handler if log_file specified
         if log_file:
             log_path = Path(log_file)
             log_path.parent.mkdir(parents=True, exist_ok=True)
-            
+
             logger.add(
                 str(log_path),
                 format=Logger._default_config["format"],
@@ -88,10 +88,10 @@ class Logger:
                 backtrace=True,
                 diagnose=True
             )
-        
+
         Logger._loggers[name] = logger
         Logger._default_config["level"] = level
-    
+
     @staticmethod
     def get_logger(name: str):
         """
@@ -106,53 +106,53 @@ class Logger:
         if name not in Logger._loggers:
             Logger.setup(name=name)
         return Logger._loggers[name]
-    
+
     @staticmethod
     def debug(message: str, **kwargs) -> None:
         """Log debug message"""
         logger.opt(depth=1).debug(message, **kwargs)
-    
+
     @staticmethod
     def info(message: str, **kwargs) -> None:
         """Log info message"""
         logger.opt(depth=1).info(message, **kwargs)
-    
+
     @staticmethod
     def warning(message: str, **kwargs) -> None:
         """Log warning message"""
         logger.opt(depth=1).warning(message, **kwargs)
-    
+
     @staticmethod
     def error(message: str, **kwargs) -> None:
         """Log error message"""
         logger.opt(depth=1).error(message, **kwargs)
-    
+
     @staticmethod
     def critical(message: str, **kwargs) -> None:
         """Log critical message"""
         logger.opt(depth=1).critical(message, **kwargs)
-    
+
     @staticmethod
     def exception(message: str, **kwargs) -> None:
         """Log exception with traceback"""
         logger.opt(depth=1).exception(message, **kwargs)
-    
+
     @staticmethod
     def log_progress(current: int, total: int, message: str = "Processing") -> None:
         """Log progress information"""
         percent = (current / total) * 100 if total > 0 else 0
         logger.info(f"{message}: {current}/{total} ({percent:.1f}%)")
-    
+
     @staticmethod
     def log_step(step: str, status: str = "COMPLETED") -> None:
         """Log pipeline step"""
         logger.info(f"[{status}] {step}")
-    
+
     @staticmethod
     def configure_for_testing() -> None:
         """Configure logger for testing (quiet mode)"""
         Logger.setup(name="data_engine", level="DEBUG", console=False)
-    
+
     @staticmethod
     def configure_for_production(log_file: str = "logs/data_engine.log") -> None:
         """Configure logger for production"""
@@ -204,7 +204,7 @@ def log_execution_time(func):
     """
     import time
     from functools import wraps
-    
+
     @wraps(func)
     def wrapper(*args, **kwargs):
         start_time = time.time()

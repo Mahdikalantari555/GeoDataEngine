@@ -1,11 +1,11 @@
 """Longwave radiation calculations for METRIC ETa model."""
 
+
 import numpy as np
 import xarray as xr
-from typing import Optional
 
+from ..core.constants import FREEZING_POINT, STEFAN_BOLTZMANN
 from ..core.datacube import DataCube
-from ..core.constants import STEFAN_BOLTZMANN, FREEZING_POINT
 
 
 class LongwaveRadiation:
@@ -28,9 +28,9 @@ class LongwaveRadiation:
         use_cloud_correction: Apply cloud cover correction to R_l↓
         use_simplified_brunt: Use simplified Brunt equation for R_l↓
     """
-    
+
     def __init__(
-        self, 
+        self,
         use_cloud_correction: bool = True,
         use_simplified_brunt: bool = True
     ):
@@ -43,7 +43,7 @@ class LongwaveRadiation:
         """
         self.use_cloud_correction = use_cloud_correction
         self.use_simplified_brunt = use_simplified_brunt
-    
+
     def compute(self, cube: DataCube) -> DataCube:
         """
         Compute all longwave radiation components and add to DataCube.
@@ -71,27 +71,27 @@ class LongwaveRadiation:
         """
         # Validate required inputs
         self._validate_inputs(cube)
-        
+
         # Get required data
         emissivity = cube.get("emissivity")
         Ts = cube.get("lwir11")  # Surface temperature in Kelvin (already converted)
-        
+
         # Compute outgoing longwave (surface emission)
         R_l_up = self.compute_outgoing_longwave(Ts, emissivity)
-        
+
         # Compute incoming longwave (atmospheric emission)
         R_l_down = self.compute_incoming_longwave(cube)
-        
+
         # Compute net longwave
         R_nl = self.compute_net_longwave(R_l_down, R_l_up)
-        
+
         # Add to DataCube
         cube.add("R_l_up", R_l_up)
         cube.add("R_l_down", R_l_down)
         cube.add("R_nl", R_nl)
-        
+
         return cube
-    
+
     def _validate_inputs(self, cube: DataCube) -> None:
         """
         Validate that required inputs are present in DataCube.
@@ -104,24 +104,24 @@ class LongwaveRadiation:
         """
         required = ["emissivity", "lwir11"]
         missing = [r for r in required if r not in cube.bands()]
-        
+
         # Check for air temperature and vapor pressure
         if "air_temperature" not in cube.bands() and "air_temperature" not in cube.scalars():
             # Check metadata for temperature
             if "temperature_2m" not in cube.scalars() and "temperature_2m" not in cube.metadata:
                 # Assume Ta is available
                 pass
-        
+
         if "vapor_pressure" not in cube.bands() and "vapor_pressure" not in cube.scalars():
             # Assume e_a is available
             pass
-        
+
         if missing:
             raise ValueError(
                 f"Missing required inputs for longwave radiation: {missing}. "
                 f"Available: {cube.bands() + cube.scalars()}"
             )
-    
+
     def compute_outgoing_longwave(
         self,
         Ts: xr.DataArray,
@@ -161,7 +161,7 @@ class LongwaveRadiation:
         }
 
         return R_l_up
-    
+
     def compute_incoming_longwave(self, cube: DataCube) -> xr.DataArray:
         """
         Compute incoming longwave radiation from the atmosphere.
@@ -223,7 +223,7 @@ class LongwaveRadiation:
         }
 
         return R_l_down
-    
+
     def _get_air_temperature(self, cube: DataCube) -> xr.DataArray:
         """
         Get air temperature in Kelvin from DataCube.
@@ -253,7 +253,7 @@ class LongwaveRadiation:
             Ta = Ta + FREEZING_POINT
 
         return Ta
-    
+
     def _get_vapor_pressure(self, cube: DataCube) -> xr.DataArray:
         """
         Get actual vapor pressure in kPa from DataCube.
@@ -270,13 +270,13 @@ class LongwaveRadiation:
             e_a = cube.get("e_a")
         if e_a is None:
             e_a = cube.get("actual_vapor_pressure")
-        
+
         if e_a is None:
             # Try to compute from dewpoint temperature
             Td = cube.get("dewpoint_temperature")
             if Td is None:
                 Td = cube.metadata.get("Td")
-            
+
             if Td is not None:
                 if isinstance(Td, (int, float)):
                     # Scalar dewpoint - create array
@@ -294,9 +294,9 @@ class LongwaveRadiation:
                     np.full((cube.y_dim, cube.x_dim), 1.5),
                     dims=['y', 'x']
                 )
-        
+
         return e_a
-    
+
     def _brunt_equation_simplified(self, e_a: xr.DataArray) -> xr.DataArray:
         """
         Compute clear-sky emissivity using simplified Brunt equation.
@@ -311,10 +311,10 @@ class LongwaveRadiation:
         """
         epsilon_clear = 0.70 + 0.005 * np.sqrt(e_a)
         return epsilon_clear.clip(0.0, 1.0)
-    
+
     def _brunt_equation_full(
-        self, 
-        e_a: xr.DataArray, 
+        self,
+        e_a: xr.DataArray,
         C: float = 0.0
     ) -> xr.DataArray:
         """
@@ -330,12 +330,12 @@ class LongwaveRadiation:
             Clear-sky emissivity
         """
         epsilon_clear = (
-            0.23 + 
-            0.433 * np.sqrt(e_a) * (1.0 - 0.14 * C) - 
+            0.23 +
+            0.433 * np.sqrt(e_a) * (1.0 - 0.14 * C) -
             0.1
         )
         return epsilon_clear.clip(0.0, 1.0)
-    
+
     def _compute_vapor_pressure(self, Td_celsius: float) -> float:
         """
         Compute actual vapor pressure from dewpoint temperature.
@@ -350,7 +350,7 @@ class LongwaveRadiation:
             Actual vapor pressure in kPa
         """
         return 0.6108 * np.exp(17.27 * Td_celsius / (Td_celsius + 237.3))
-    
+
     def _compute_vapor_pressure_array(self, Td: xr.DataArray) -> xr.DataArray:
         """
         Compute actual vapor pressure from dewpoint temperature (array version).
@@ -363,7 +363,7 @@ class LongwaveRadiation:
         """
         e_a = 0.6108 * np.exp(17.27 * Td / (Td + 237.3))
         return e_a
-    
+
     def compute_net_longwave(
         self,
         R_l_down: xr.DataArray,
@@ -396,9 +396,9 @@ class LongwaveRadiation:
         }
 
         return R_nl
-    
+
     def compute_atmospheric_emission_correction(
-        self, 
+        self,
         cube: DataCube
     ) -> xr.DataArray:
         """
@@ -416,21 +416,21 @@ class LongwaveRadiation:
         # Get inputs
         e_a = self._get_vapor_pressure(cube)
         C = cube.metadata.get("cloud_cover", 0.0)
-        
+
         # Clear-sky emissivity
         epsilon_clear = self._brunt_equation_full(e_a, C)
-        
+
         # Atmospheric transmittance
         tau_atm = 1.0 - epsilon_clear
-        
+
         corr = tau_atm
-        
+
         corr.name = "atm_emission_corr"
         corr.attrs = {
             'long_name': 'Atmospheric Emission Correction',
             'units': 'dimensionless'
         }
-        
+
         return corr
 
 
@@ -438,4 +438,4 @@ class LongwaveRadiation:
 Longwave = LongwaveRadiation
 
 
-__all__ = ['LongwaveRadiation', 'Longwave']
+__all__ = ['Longwave', 'LongwaveRadiation']

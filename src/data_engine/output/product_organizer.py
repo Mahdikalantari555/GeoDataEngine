@@ -19,16 +19,13 @@ The expected output structure is:
             ...
 """
 
-import os
 import json
-import shutil
 import re
-from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+import shutil
 from datetime import datetime
+from pathlib import Path
 
 from loguru import logger
-
 
 # Sentinel pipeline writes plain names like RGB.tif, NDVI.tif.
 # METRIC pipeline writes complex names like NDVI_LC08_20200105_amirkabir.tif.
@@ -104,17 +101,17 @@ class ProductOrganizer:
     - Moving products to appropriate folders
     - Generating metadata for each product
     """
-    
+
     # Combined: plain patterns (Sentinel pipeline) + METRIC patterns (full naming)
     PRODUCT_PATTERNS = {**PLAIN_PRODUCT_PATTERNS, **METRIC_PRODUCT_PATTERNS}
-    
+
     def __init__(
         self,
         output_dir: str,
         aoi_name: str = "AOI",
         create_metadata: bool = True,
         metadata_in_product_folder: bool = True,
-        allowed_products: Optional[List[str]] = None
+        allowed_products: list[str] | None = None
     ):
         """
         Initialize ProductOrganizer.
@@ -136,8 +133,8 @@ class ProductOrganizer:
         self.allowed_products = allowed_products
         self.products_dir = self.output_dir / "products"
         self.metadata_dir = self.products_dir / "metadata" if not metadata_in_product_folder else None
-    
-    def organize(self) -> Dict[str, List[str]]:
+
+    def organize(self) -> dict[str, list[str]]:
         """
         Organize all products in the output directory.
         
@@ -145,13 +142,13 @@ class ProductOrganizer:
             Dictionary mapping product types to lists of organized file paths
         """
         logger.info(f"Starting product organization in {self.output_dir}")
-        
+
         # Create products directory structure
         self._create_directory_structure()
-        
+
         # Scan for products
         products = self._scan_products()
-        
+
         if not products:
             logger.warning(f"No products found in {self.output_dir}")
             logger.warning("DEBUG: Check if .tif files exist in subdirectories")
@@ -161,25 +158,25 @@ class ProductOrganizer:
             for tif in all_tifs[:10]:  # Show first 10
                 logger.warning(f"  - {tif}")
             return {}
-        
+
         logger.info(f"Found {sum(len(v) for v in products.values())} products to organize")
-        
+
         # Organize each product type
         organized = {}
         for product_type, files in products.items():
             organized[product_type] = self._organize_product_type(product_type, files)
-        
+
         # Create summary metadata
         if self.create_metadata:
             self._create_summary_metadata(organized)
-        
+
         logger.info(f"Product organization complete. Products saved to {self.products_dir}")
         logger.info(f"Organized products: {list(organized.keys())}")
         for pt, files in organized.items():
             logger.info(f"  {pt}: {len(files)} files")
-        
+
         return organized
-    
+
     def _create_directory_structure(self) -> None:
         """Create the products directory structure."""
         # Create main products directory
@@ -191,8 +188,8 @@ class ProductOrganizer:
 
         # Per-product directories are created lazily in _organize_product_type()
         # only when matching files are actually found, avoiding empty dirs.
-    
-    def _scan_products(self) -> Dict[str, List[Path]]:
+
+    def _scan_products(self) -> dict[str, list[Path]]:
         """
         Scan output directory for product files.
 
@@ -206,7 +203,7 @@ class ProductOrganizer:
         logger.debug(f"Total .tif files found: {len(all_tif_files)}")
 
         # Build allowed-set when a filter is provided
-        allowed_set: Optional[set] = None
+        allowed_set: set | None = None
         if self.allowed_products:
             allowed_set = {p.lower() for p in self.allowed_products}
             logger.info(f"Product filter active: {sorted(allowed_set)}")
@@ -244,8 +241,8 @@ class ProductOrganizer:
             logger.warning("No recognizable products found during scan")
 
         return products
-    
-    def _identify_product_type(self, filename: str) -> Optional[str]:
+
+    def _identify_product_type(self, filename: str) -> str | None:
         """
         Identify the product type from filename.
         
@@ -262,15 +259,15 @@ class ProductOrganizer:
         for product_type, pattern in PLAIN_PRODUCT_PATTERNS.items():
             if re.match(pattern, filename, re.IGNORECASE):
                 return product_type
-        
+
         # Then try METRIC naming convention
         for product_type, pattern in METRIC_PRODUCT_PATTERNS.items():
             if re.match(pattern, filename, re.IGNORECASE):
                 return product_type
-        
+
         return None
-    
-    def _organize_product_type(self, product_type: str, files: List[Path]) -> List[str]:
+
+    def _organize_product_type(self, product_type: str, files: list[Path]) -> list[str]:
         """
         Organize files for a specific product type.
         
@@ -283,40 +280,40 @@ class ProductOrganizer:
         """
         organized_files = []
         product_dir = self.products_dir / product_type
-        
+
         # Ensure product directory exists
         product_dir.mkdir(parents=True, exist_ok=True)
-        
+
         for src_file in files:
             try:
                 # Skip if file doesn't exist (might have been moved already)
                 if not src_file.exists():
                     logger.warning(f"File already moved or doesn't exist: {src_file}")
                     continue
-                
+
                 dst_file = product_dir / src_file.name
-                
+
                 # Handle case where destination already exists
                 if dst_file.exists():
                     logger.warning(f"Destination already exists, skipping: {dst_file.name}")
                     continue
-                
+
                 # Move file to product directory
                 shutil.move(str(src_file), str(dst_file))
                 organized_files.append(str(dst_file))
-                
+
                 logger.info(f"Moved {src_file.name} -> products/{product_type}/")
-                
+
                 # Create metadata if enabled
                 if self.create_metadata:
                     self._create_product_metadata(dst_file, product_type)
-                    
+
             except Exception as e:
                 logger.error(f"Failed to organize {src_file}: {e}")
                 continue
-        
+
         return organized_files
-    
+
     def _create_product_metadata(self, product_file: Path, product_type: str) -> None:
         """
         Create metadata JSON for a product file.
@@ -326,9 +323,9 @@ class ProductOrganizer:
             product_type: Type of product
         """
         try:
-            import rasterio
             import numpy as np
-            
+            import rasterio
+
             metadata = {
                 'product_name': product_file.stem,
                 'product_type': product_type,
@@ -336,7 +333,7 @@ class ProductOrganizer:
                 'file_size_bytes': product_file.stat().st_size,
                 'creation_date': datetime.now().isoformat(),
             }
-            
+
             # Read raster metadata using rasterio
             with rasterio.open(str(product_file)) as src:
                 metadata['width'] = src.width
@@ -351,7 +348,7 @@ class ProductOrganizer:
                 metadata['transform'] = src.transform.to_gdal()
                 metadata['dtype'] = src.dtypes[0]
                 metadata['nodata'] = src.nodata
-                
+
                 # Calculate statistics if possible
                 try:
                     data = src.read(1)
@@ -359,7 +356,7 @@ class ProductOrganizer:
                         valid = data[~np.isnan(data)]
                     else:
                         valid = data[data != src.nodata] if src.nodata else data.flatten()
-                    
+
                     if len(valid) > 0:
                         metadata['statistics'] = {
                             'min': float(np.min(valid)),
@@ -371,7 +368,7 @@ class ProductOrganizer:
                         }
                 except Exception:
                     pass
-            
+
             # Write metadata file into the product's metadata/ subfolder
             # with a META_ prefix and .geojson extension.
             product_dir = product_file.parent
@@ -380,13 +377,13 @@ class ProductOrganizer:
             meta_path = metadata_dir / f"META_{product_file.stem}.geojson"
             with open(meta_path, 'w', encoding='utf-8') as f:
                 json.dump(metadata, f, indent=2)
-            
+
             logger.debug(f"Created metadata for {product_file.name}")
-            
+
         except Exception as e:
             logger.warning(f"Failed to create metadata for {product_file}: {e}")
-    
-    def _create_summary_metadata(self, organized: Dict[str, List[str]]) -> None:
+
+    def _create_summary_metadata(self, organized: dict[str, list[str]]) -> None:
         """
         Create summary metadata for organized products.
         
@@ -401,24 +398,24 @@ class ProductOrganizer:
                 'products_dir': str(self.products_dir),
                 'products': {}
             }
-            
+
             for product_type, files in organized.items():
                 summary['products'][product_type] = {
                     'count': len(files),
                     'files': files,
                     'directory': str(self.products_dir / product_type),
                 }
-            
+
             summary_path = self.products_dir / "summary_metadata.json"
             with open(summary_path, 'w', encoding='utf-8') as f:
                 json.dump(summary, f, indent=2)
-            
+
             logger.info(f"Created summary metadata at {summary_path}")
-            
+
         except Exception as e:
             logger.warning(f"Failed to create summary metadata: {e}")
-    
-    def get_product_statistics(self) -> Dict[str, Dict]:
+
+    def get_product_statistics(self) -> dict[str, dict]:
         """
         Get statistics for all organized products.
         
@@ -426,7 +423,7 @@ class ProductOrganizer:
             Dictionary mapping product types to their statistics
         """
         stats = {}
-        
+
         for product_dir in self.products_dir.iterdir():
             if product_dir.is_dir():
                 tif_files = list(product_dir.glob("*.tif"))
@@ -436,7 +433,7 @@ class ProductOrganizer:
                         'total_size_mb': sum(f.stat().st_size for f in tif_files) / (1024 * 1024),
                         'files': [f.name for f in tif_files],
                     }
-        
+
         return stats
 
 
@@ -445,8 +442,8 @@ def organize_products(
     aoi_name: str = "AOI",
     create_metadata: bool = True,
     metadata_in_product_folder: bool = True,
-    allowed_products: Optional[List[str]] = None
-) -> Dict[str, List[str]]:
+    allowed_products: list[str] | None = None
+) -> dict[str, list[str]]:
     """
     Convenience function to organize products in a single call.
 

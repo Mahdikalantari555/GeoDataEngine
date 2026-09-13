@@ -5,18 +5,20 @@ This module implements the calibration of the temperature difference (dT)
 relationship used in the sensible heat flux computation for METRIC.
 """
 
-from typing import Dict, Optional, Tuple, Any, List
 import logging
-import numpy as np
-import xarray as xr
 from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
+from typing import Any
+
+import numpy as np
+import xarray as xr
 
 # Import physical constants for METRIC calibration
-from ..core.constants import LATENT_HEAT_VAPORIZATION, WATER_DENSITY, MJ_M2_DAY_TO_W
+from ..core.constants import LATENT_HEAT_VAPORIZATION, MJ_M2_DAY_TO_W
+
 # Import global post-calibration validation
-from .validation import GlobalPostCalibrationValidator, GlobalPostCalibrationValidation
+from .validation import GlobalPostCalibrationValidation, GlobalPostCalibrationValidator
 
 
 class CalibrationStatus(Enum):
@@ -42,10 +44,10 @@ class CalibrationLog:
     h_mean: float
     etrf_mean: float
     etrf_p95: float
-    a_coefficient: Optional[float] = None
-    b_coefficient: Optional[float] = None
-    rejection_reason: Optional[str] = None
-    reuse_source: Optional[str] = None  # For REUSED status
+    a_coefficient: float | None = None
+    b_coefficient: float | None = None
+    rejection_reason: str | None = None
+    reuse_source: str | None = None  # For REUSED status
     valid: bool = True  # Overall scene validity
     errors: list = field(default_factory=list)
 
@@ -92,8 +94,8 @@ class CalibrationResult:
     status: CalibrationStatus = CalibrationStatus.ACCEPTED
     scene_quality: str = "GOOD"  # GOOD/DEGRADED/LOW_QUALITY/REJECTED
     timestamp: datetime = field(default_factory=datetime.now)
-    rejection_reason: Optional[str] = None
-    reuse_source: Optional[str] = None
+    rejection_reason: str | None = None
+    reuse_source: str | None = None
     # NEW: Unified pipeline fields
     global_validation_passed: bool = True
     global_violations: list = field(default_factory=list)
@@ -144,7 +146,7 @@ class DTCalibration:
         """
         self._calibration_history = []  # Store previous valid calibrations for fallback
         self._logger = logging.getLogger(__name__)
-    
+
     @classmethod
     def create(cls) -> 'DTCalibration':
         """
@@ -159,8 +161,8 @@ class DTCalibration:
             DTCalibration instance
         """
         return cls()
-    
-    def compute_scene_statistics(self, cube) -> Dict[str, float]:
+
+    def compute_scene_statistics(self, cube) -> dict[str, float]:
         """
         Compute mandatory scene statistics for logging.
 
@@ -270,7 +272,7 @@ class DTCalibration:
             calibration_result.status = CalibrationStatus.ACCEPTED
             calibration_result.scene_quality = "GOOD"
             calibration_result.timestamp = timestamp
-            
+
             # Store in calibration history for potential fallback
             self._calibration_history.append({
                 "a_coefficient": calibration_result.a_coefficient,
@@ -278,16 +280,16 @@ class DTCalibration:
                 "timestamp": timestamp,
                 "scene_id": scene_id
             })
-            
+
             # Keep only last 10 calibrations
             if len(self._calibration_history) > 10:
                 self._calibration_history = self._calibration_history[-10:]
-            
+
             self._logger.info(
                 f"Calibration ACCEPTED for scene {scene_id}: "
                 f"a={calibration_result.a_coefficient:.3f}, b={calibration_result.b_coefficient:.1f}"
             )
-            
+
         elif self._calibration_history:
             # Case 2: Calibration rejected but previous valid calibration exists
             last_valid = self._calibration_history[-1]
@@ -298,20 +300,20 @@ class DTCalibration:
             calibration_result.b_coefficient = last_valid["b_coefficient"]
             calibration_result.reuse_source = f"Scene {last_valid['scene_id']} at {last_valid['timestamp']}"
             calibration_result.valid = True  # Reused calibration is valid for processing
-            
+
             self._logger.warning(
                 f"Calibration REUSED for scene {scene_id}: "
                 f"a={calibration_result.a_coefficient:.3f}, b={calibration_result.b_coefficient:.1f} "
                 f"from {calibration_result.reuse_source}"
             )
-            
+
         else:
             # Case 3: Calibration rejected and no fallback exists
             calibration_result.status = CalibrationStatus.REJECTED
             calibration_result.scene_quality = "REJECTED"
             calibration_result.timestamp = timestamp
             calibration_result.rejection_reason = f"Calibration failed with errors: {calibration_result.errors}"
-            
+
             self._logger.error(
                 f"Calibration REJECTED for scene {scene_id}: {calibration_result.rejection_reason}"
             )
@@ -367,8 +369,7 @@ class DTCalibration:
         """
         self._calibration_history.clear()
         self._logger.info("Calibration history cleared")
-    
-    
+
     def calibrate_from_anchors(self, cube, anchors):
         """
         Calibrate using DataCube and AnchorPixelsResult with enhanced cluster-based anchors.
@@ -388,100 +389,100 @@ class DTCalibration:
             # Cluster-based: use median statistics
             ts_cold = anchors.cold_cluster.ts_median
             ts_hot = anchors.hot_cluster.ts_median
-            
+
             # Get energy values from clusters if available
             h_cold = anchors.cold_cluster.h_median
             h_hot = anchors.hot_cluster.h_median
             le_cold = anchors.cold_cluster.le_median
-            
+
             # Get Rn, G from first pixel in cluster (representative location)
             rn = cube.get("R_n")
             g = cube.get("G")
-            
+
             cold_y, cold_x = anchors.cold_cluster.pixel_indices[0]
             hot_y, hot_x = anchors.hot_cluster.pixel_indices[0]
-            
+
             rn_cold = float(rn[cold_y, cold_x])
             g_cold = float(g[cold_y, cold_x])
             rn_hot = float(rn[hot_y, hot_x])
             g_hot = float(g[hot_y, hot_x])
-            
+
             # Extract anchor pixel metadata from clusters
             cold_pixel_ndvi = anchors.cold_cluster.ndvi_median
             cold_pixel_albedo = anchors.cold_cluster.albedo_median
             hot_pixel_ndvi = anchors.hot_cluster.ndvi_median
             hot_pixel_albedo = anchors.hot_cluster.albedo_median
-            
+
             cold_pixel_x = cold_x
             cold_pixel_y = cold_y
             hot_pixel_x = hot_x
             hot_pixel_y = hot_y
-            
+
             logger = logging.getLogger(__name__)
             logger.info(f"Using cluster-based anchors: cold Ts={ts_cold:.2f}K, hot Ts={ts_hot:.2f}K")
             logger.info(f"  Cold cluster: {len(anchors.cold_cluster.pixel_indices)} pixels, median H={h_cold:.1f}, LE={le_cold:.1f}")
             logger.info(f"  Hot cluster: {len(anchors.hot_cluster.pixel_indices)} pixels, median H={h_hot:.1f}")
-            
+
         elif anchors.cold_pixel is not None and anchors.hot_pixel is not None:
             # Legacy single-pixel mode
             ts_cold = anchors.cold_pixel.temperature
             ts_hot = anchors.hot_pixel.temperature
-            
+
             # Get values at anchor pixel locations
             rn = cube.get("R_n")
             g = cube.get("G")
-            
+
             cold_y, cold_x = anchors.cold_pixel.y, anchors.cold_pixel.x
             hot_y, hot_x = anchors.hot_pixel.y, anchors.hot_pixel.x
-            
+
             rn_cold = float(rn[cold_y, cold_x])
             g_cold = float(g[cold_y, cold_x])
             rn_hot = float(rn[hot_y, hot_x])
             g_hot = float(g[hot_y, hot_x])
-            
+
             # Extract anchor pixel metadata
             cold_pixel_ndvi = anchors.cold_pixel.ndvi if anchors.cold_pixel.ndvi is not None else np.nan
             cold_pixel_albedo = anchors.cold_pixel.albedo if anchors.cold_pixel.albedo is not None else np.nan
             hot_pixel_ndvi = anchors.hot_pixel.ndvi if anchors.hot_pixel.ndvi is not None else np.nan
             hot_pixel_albedo = anchors.hot_pixel.albedo if anchors.hot_pixel.albedo is not None else np.nan
-            
+
             cold_pixel_x = cold_x
             cold_pixel_y = cold_y
             hot_pixel_x = hot_x
             hot_pixel_y = hot_y
-            
+
             # Get H and LE from cube if available
             h_array = cube.get("H")
             le_array = cube.get("LE")
             h_cold = float(h_array[cold_y, cold_x]) if h_array is not None else np.nan
             h_hot = float(h_array[hot_y, hot_x]) if h_array is not None else np.nan
             le_cold = float(le_array[cold_y, cold_x]) if le_array is not None else np.nan
-            
+
             logger = logging.getLogger(__name__)
             logger.info(f"Using legacy single-pixel anchors: cold Ts={ts_cold:.2f}K, hot Ts={ts_hot:.2f}K")
         else:
             raise ValueError("Invalid anchor result: must have either cold_cluster/hot_cluster or cold_pixel/hot_pixel")
-        
+
         # CRITICAL VALIDATION: Check anchor pixel temperatures before calibration
         # Check for NaN or invalid temperatures
         if ts_cold is None or np.isnan(ts_cold):
             raise ValueError(f"Cold pixel temperature is invalid: {ts_cold}")
         if ts_hot is None or np.isnan(ts_hot):
             raise ValueError(f"Hot pixel temperature is invalid: {ts_hot}")
-        
+
         # Check temperature order (hot > cold)
         if ts_hot <= ts_cold:
             raise ValueError(
                 f"Invalid anchor pixel temperatures: Ts_hot ({ts_hot:.2f} K) <= Ts_cold ({ts_cold:.2f} K). "
                 f"This will cause calibration to fail. Check anchor pixel selection."
             )
-        
+
         # Check temperature range (reasonable for Landsat LST: 270-400 K)
         if ts_cold < 260 or ts_cold > 380:
             logger.warning(f"Unusual cold pixel temperature: {ts_cold:.2f} K (expected 270-350 K)")
         if ts_hot < 280 or ts_hot > 400:
             logger.warning(f"Unusual hot pixel temperature: {ts_hot:.2f} K (expected 300-380 K)")
-        
+
         # Check minimum temperature difference (required for METRIC calibration)
         ts_diff = ts_hot - ts_cold
         if ts_diff < 10.0:
@@ -489,12 +490,12 @@ class DTCalibration:
                 f"Small temperature difference: Ts_hot - Ts_cold = {ts_diff:.2f} K. "
                 f"METRIC requires at least 15 K difference for proper calibration."
             )
-        
+
         logger.info(f"Anchor pixel validation: Ts_cold={ts_cold:.2f}K, Ts_hot={ts_hot:.2f}K, dT={ts_diff:.2f}K")
-        
+
         # Get required arrays from DataCube
         air_temperature_array = cube.get("temperature_2m")
-        
+
         # NEW: Get weather data for ET0 conversion
         et0_daily_array = cube.get("et0_fao_evapotranspiration")
         rs_inst_array = cube.get("shortwave_radiation")
@@ -512,13 +513,13 @@ class DTCalibration:
 
         # Get scalar air temperature (uniform)
         air_temperature = float(np.nanmean(air_temperature_array.values)) if hasattr(air_temperature_array, 'values') else float(np.nanmean(air_temperature_array))
-        
+
         # Validate air temperature
         if air_temperature < 250 or air_temperature > 330:
             logger.warning(f"Unusual air temperature: {air_temperature:.2f} K (expected 270-310 K)")
-        
+
         logger.info(f"Air temperature: {air_temperature:.2f} K")
-        
+
         # Get scalar weather data (assuming uniform over scene)
         et0_daily = float(np.nanmean(et0_daily_array.values))
         rs_inst = float(np.nanmean(rs_inst_array.values))
@@ -627,7 +628,7 @@ class DTCalibration:
                 hot_pixel_x=0,
                 hot_pixel_y=0
             )
-        
+
         # Check minimum temperature difference
         ts_diff = ts_hot - ts_cold
         if ts_diff < 15.0:
@@ -636,7 +637,7 @@ class DTCalibration:
                 f"This may produce unreliable calibration coefficients."
             )
             logger.warning(f"Small temperature difference: {ts_diff:.2f} K")
-        
+
         # Validate inputs
         if ts_cold >= ts_hot:
             errors.append(
@@ -647,17 +648,17 @@ class DTCalibration:
         # Calculate instantaneous reference ET (critical METRIC fix)
         # ET0_inst = ET0_daily * (Rs_inst / Rs_daily)
         # This is the correct formula from Allen et al. (2007) and Tasumi et al. (2005)
-         
+
         # Convert rs_daily from MJ/m²/day to W/m² for the ratio
         rs_daily_avg_w = rs_daily * MJ_M2_DAY_TO_W  # MJ/m²/day -> W/m²
-         
+
         if rs_daily <= 0:
             errors.append(f"Invalid rs_daily ({rs_daily:.2f}): must be positive")
             et0_inst = 0.0
         else:
             # Apply radiation ratio (no capping for METRIC)
             radiation_ratio = rs_inst / rs_daily_avg_w
-            
+
             # ET0_inst = ET0_daily * (Rs_inst / Rs_daily)
             # Result is in mm/day-equivalent for METRIC LE calculation
             et0_inst = et0_daily * radiation_ratio
@@ -693,21 +694,21 @@ class DTCalibration:
                 f"This indicates ET overestimation. Check ET0_inst calculation."
             )
             logger.debug(f"Cold pixel dT constraint: {dT_cold:.2f} K > 0.5 K")
- 
+
         # Validate ET0_inst is positive
         if et0_inst <= 0:
             errors.append(
                 f"Invalid ET0_inst: {et0_inst:.3f} mm/hr. Must be positive."
             )
             logger.warning(f"Invalid ET0_inst: {et0_inst:.3f} mm/hr")
- 
+
         # Validate LE_cold is positive
         if le_cold <= 0:
             errors.append(
                 f"Invalid LE_cold: {le_cold:.1f} W/m². Must be positive."
             )
             logger.warning(f"Invalid LE_cold: {le_cold:.1f} W/m²")
- 
+
         # Validate energy balance at cold pixel (METRIC requirement)
         # Note: H_cold should be small when LE_cold is properly constrained
         # Large H_cold values indicate calibration issues, not energy balance violations
@@ -743,10 +744,10 @@ class DTCalibration:
         try:
             if ts_hot <= ts_cold:
                 raise ValueError(f"Invalid temperatures: Ts_hot ({ts_hot:.2f}) <= Ts_cold ({ts_cold:.2f})")
-            
+
             # Calculate temperature difference between hot and cold pixels
             ts_diff = ts_hot - ts_cold
-            
+
             # CRITICAL VALIDATION: Temperature difference must be >= 15K for proper calibration
             if ts_diff < 15.0:
                 errors.append(
@@ -754,24 +755,24 @@ class DTCalibration:
                     f"This will cause calibration to fail (a ≈ 1.0, no calibration effect)."
                 )
                 logger.warning(f"Calibration WARNING: Small temperature difference {ts_diff:.2f} K - may produce invalid coefficients")
-            
+
             # Calculate dT values
             dT_hot = ts_hot - air_temperature
             dT_cold = ts_cold - air_temperature
-            
+
             logger.info(f"Calibration debug: Ts_hot={ts_hot:.2f}K, Ts_cold={ts_cold:.2f}K, Ta={air_temperature:.2f}K")
             logger.info(f"Calibration debug: dT_hot={dT_hot:.2f}K, dT_cold={dT_cold:.2f}K, Ts_diff={ts_diff:.2f}K")
-            
+
             # CORRECTED - Physics-based calibration for dt_a (W/m²/K)
             # The goal is to find dt_a such that H_hot = dt_a * dT_hot at the hot pixel
             # where H_hot = Rn_hot - G_hot (available energy, assuming LE_hot ≈ 0 for dry hot pixel)
             # This gives dt_a = H_hot / dT_hot with units W/m²/K
-            
+
             # Calculate available energy at hot pixel
             available_energy_hot = rn_hot - g_hot
-            
+
             logger.info(f"Calibration physics: Rn_hot={rn_hot:.1f} W/m², G_hot={g_hot:.1f} W/m², Available_energy={available_energy_hot:.1f} W/m²")
-            
+
             # Calculate dt_a = H_hot / dT_hot (physics-based, units: W/m²/K)
             # dT_hot must be > 0.5 K for meaningful calibration
             if dT_hot > 0.5:
@@ -782,7 +783,7 @@ class DTCalibration:
                 # Estimate rah from wind speed instead of hardcoded value
                 # METRIC-typical: rah ≈ 200 / u (s/m) for neutral conditions
                 # Where u is wind speed at 2m in m/s
-                # 
+                #
                 # Get wind speed if available, otherwise use typical value
                 wind_speed_array = cube.get("u") if cube is not None else None
                 if wind_speed_array is not None:
@@ -790,75 +791,75 @@ class DTCalibration:
                     wind_speed = np.clip(wind_speed, 1.0, 10.0)  # Clip to reasonable range
                 else:
                     wind_speed = 4.0  # Typical wind speed m/s if not available
-                
+
                 estimated_rah = 200.0 / wind_speed  # s/m (METRIC-typical range)
-                
+
                 # Air density adjustment
                 estimated_rho = 1.2  # kg/m³ at sea level
                 estimated_cp = 1013  # J/kg/K
                 dt_a = (estimated_rho * estimated_cp) / estimated_rah
-                
+
                 # Apply regional adjustment based on air temperature
                 temp_factor = 293.15 / air_temperature  # Normalize to 20°C
                 dt_a = dt_a * np.clip(temp_factor, 0.9, 1.1)
-                
+
                 logger.warning(f"dT_hot too small ({dT_hot:.2f}K), using physics-based dt_a={dt_a:.2f} W/m²/K")
                 logger.warning(f"  Wind speed={wind_speed:.1f} m/s, rah≈{estimated_rah:.1f} s/m, rho={estimated_rho} kg/m³, cp={estimated_cp} J/kg/K")
-            
+
             # Clip dt_a to physical range (15-45 W/m²/K)
             # This corresponds to rah = 22-67 s/m which is physically realistic
             # Narrowed from [10, 50] to [15, 45] for better calibration quality
             dt_a = np.clip(dt_a, 15.0, 45.0)
             logger.info(f"Calibration result: dt_a = {dt_a:.2f} W/m²/K (clipped to [15, 45] range)")
-            
+
             # Calculate calibration coefficients for dT = a * Ts + b relationship
             # From H = dt_a * dT and dT = Ts - Ta + b/dt_a (calibrated relationship)
             # This simplifies to: dT = (1/dt_a) * Ts + (Ta - Ts_cold/dt_a)
             # where a_coefficient = 1/dt_a and b_coefficient = Ta - Ts_cold/dt_a
-            # 
+            #
             # For METRIC calibration:
             #   dT = Ts - Ta (uncalibrated)
             #   dT_calibrated = dt_a * (Ts - Ta) / dt_a = Ts - Ta (same)
-            # 
+            #
             # The calibration essentially scales dT by dt_a factor
             # For proper METRIC: a_coefficient represents dt_a (W/m²/K)
             # and the formula H = a_coefficient * dT is used
-            
+
             # For backward compatibility, store dt_a as a_coefficient
             # and calculate b for the linear relationship
             a = dt_a  # a_coefficient is now dt_a in W/m²/K
-            
+
             # Calculate calibration coefficients for dT = a * Ts + b relationship
             # FIXED: Proper METRIC calibration using dT = Ts - Ta at hot pixel
-            # 
+            #
             # The METRIC calibration uses:
             #   dT = a * (Ts - Ta) + b
-            # 
+            #
             # At the hot pixel, we set dT_hot = Ts_hot - Ta (from energy balance)
             # This means: a * (Ts_hot - Ta) + b = Ts_hot - Ta
             # Solving for b: b = (Ts_hot - Ta) - a * (Ts_hot - Ta) = (1 - a) * (Ts_hot - Ta)
-            # 
+            #
             # At the cold pixel, this gives:
             #   dT_cold = a * (Ts_cold - Ta) + (1 - a) * (Ts_hot - Ta)
             #           = a * dT_cold_physical + (1 - a) * dT_hot_physical
-            # 
+            #
             # For proper cold pixel behavior (dT_cold ≈ 0), we need a ≈ 1
             # But this means no calibration! The proper approach is:
-            # 
+            #
             # CORRECTED: Use H = dt_a * dT where dT = Ts - Ta
             # This gives H = dt_a * (Ts - Ta) directly, with b = 0
-            # 
+            #
             # For backward compatibility, store dt_a as a_coefficient
             # and use b = 0 for the linear relationship dT = a * (Ts - Ta)
-            
+
             a = dt_a  # a_coefficient is dt_a in W/m²/K
-            
+
             # METRIC-consistent b coefficient calculation using anchor pixels
             # The cold pixel constraint: dT_cold ≈ 0
             # dT_cold = a * (Ts_cold - Ta_cold) + b
             # Therefore: b = -a * (Ts_cold - Ta_cold)
-            # 
-            # This enforces the METRIC cold pixel assumption: well-watered vegetation 
+            #
+            # This enforces the METRIC cold pixel assumption: well-watered vegetation
             # should have dT ≈ 0 (H_cold ≈ 0, energy balance closure)
             if ts_cold is not None and air_temperature is not None:
                 b = -a * (ts_cold - air_temperature)
@@ -867,7 +868,7 @@ class DTCalibration:
                 # Fallback: zero-intercept proportional model (SAFE MODE)
                 b = 0.0
                 logger.warning("Cold pixel unavailable — using zero-intercept dT model (b = 0.0)")
-            
+
             # Validate calibration coefficients
             # dt_a should be in 15-45 W/m²/K range (narrowed from [10, 50])
             if dt_a < 15.0 or dt_a > 45.0:
@@ -876,7 +877,7 @@ class DTCalibration:
                     f"This indicates anchor pixel calibration issues."
                 )
                 logger.warning(f"Calibration WARNING: dt_a = {dt_a:.2f} W/m²/K outside optimal range [15, 45]")
-            
+
             # Validate dT_hot is reasonable (should be ~15-25 K for hot pixel)
             if dT_hot < 5.0:
                 errors.append(
@@ -884,14 +885,14 @@ class DTCalibration:
                     f"Expected dT_hot ≈ 15-25 K for proper calibration."
                 )
                 logger.warning(f"Calibration WARNING: dT_hot = {dT_hot:.2f} K < 5 K")
-            
+
             if dT_hot > 40.0:
                 errors.append(
                     f"dT_hot too large: {dT_hot:.2f} K. Hot pixel temperature may be unrealistic. "
                     f"Expected dT_hot ≈ 15-25 K."
                 )
                 logger.warning(f"Calibration WARNING: dT_hot = {dT_hot:.2f} K > 40 K")
-            
+
             # Validate dT_cold is near zero (METRIC cold pixel constraint)
             if dT_cold > 2.0:
                 errors.append(
@@ -899,11 +900,11 @@ class DTCalibration:
                     f"This indicates cold pixel is not well-watered vegetation."
                 )
                 logger.warning(f"Calibration WARNING: dT_cold = {dT_cold:.2f} K > 2 K")
-            
+
             logger.info(f"METRIC calibration result: a = {a:.2f} W/m²/K, b = {b:.2f} K")
             logger.info(f"  dT at cold pixel: {dT_cold:.2f} K (target: ~0 K)")
             logger.info(f"  dT at hot pixel: {dT_hot:.2f} K (target: ~15-25 K)")
-            
+
         except ValueError as e:
             errors.append(str(e))
             # Enhanced fallback: Use empirical relationship instead of zero
@@ -957,16 +958,16 @@ class DTCalibration:
             h_hot=np.nan,  # Calculated after calibration
             le_hot=np.nan  # Calculated after calibration
         )
-    
+
     def unified_calibration_pipeline(
         self,
         cube,
         scene_id: str,
         energy_balance_manager,
         anchor_pixel_selector,
-        validation_config: Optional[Dict[str, Any]] = None,
+        validation_config: dict[str, Any] | None = None,
         roi_mask=None
-    ) -> Tuple[CalibrationResult, Any]:
+    ) -> tuple[CalibrationResult, Any]:
         """
         Execute the complete METRIC calibration pipeline as specified in the algorithm.
         
@@ -987,10 +988,10 @@ class DTCalibration:
         """
         import logging
         from datetime import datetime
-        
+
         logger = logging.getLogger(__name__)
         logger.info(f"Starting unified METRIC calibration pipeline for scene {scene_id}")
-        
+
         try:
             # Step 1: Scene-level pre-validation (HARD REJECT)
             logger.info("Step 1: Scene-level pre-validation")
@@ -1017,15 +1018,15 @@ class DTCalibration:
                     hot_pixel_x=0,
                     hot_pixel_y=0
                 ), None
-            
+
             # Step 2: Dynamic anchor candidate selection
             logger.info("Step 2: Dynamic anchor candidate selection")
             rn = cube.get("R_n")
             g_flux = cube.get("G")
-            
+
             if rn is None or g_flux is None:
                 raise ValueError("Rn and G required for anchor pixel selection")
-            
+
             # Use enhanced selector if available
             if hasattr(anchor_pixel_selector, 'select_anchor_pixels') and \
                'cube' in anchor_pixel_selector.select_anchor_pixels.__code__.co_varnames:
@@ -1042,20 +1043,20 @@ class DTCalibration:
                     ndvi=cube.get("ndvi").values if cube.get("ndvi") is not None else None,
                     albedo=cube.get("albedo").values if cube.get("albedo") is not None else None
                 )
-            
+
             # Step 3: Anchor pixel physics checks
             logger.info("Step 3: Anchor pixel physics checks")
             anchor_valid, anchor_physics_issues = self._perform_anchor_physics_validation(
                 cube, anchor_result, energy_balance_manager
             )
-            
+
             if not anchor_valid:
                 logger.debug(f"Anchor physics issues: {anchor_physics_issues}")
-            
+
             # Step 4: Calibration solve (dT = a·Ts + b)
             logger.info("Step 4: Calibration solve (dT = a·Ts + b)")
             calibration = self.calibrate_from_anchors(cube, anchor_result)
-            
+
             if not calibration.valid:
                 logger.debug(f"Calibration issues: {calibration.errors}")
                 # For physics constraint failures, we still want to proceed with ET calculation
@@ -1063,26 +1064,26 @@ class DTCalibration:
                 calibration.valid = True
                 calibration.status = CalibrationStatus.ACCEPTED
                 calibration.scene_quality = "LOW_QUALITY"
-            
+
             # Step 5: Global post-calibration validation (requires H, LE, EF, ETrF)
             logger.info("Step 5: Global post-calibration validation")
-            
+
             # Calculate energy balance with calibration to get H, LE for validation
             energy_balance_manager.set_anchor_pixel_calibration(
                 calibration.a_coefficient, calibration.b_coefficient
             )
             eb_results = energy_balance_manager.calculate(cube)
-            
+
             # Get validation arrays
             ef = cube.get("EF")
             h = cube.get("H")
             etrf = cube.get("ETrF")
-            
+
             if ef is not None and h is not None and etrf is not None:
                 global_validation = self.validate_global_calibration(
                     ef, h, etrf, raise_on_failure=False
                 )
-                
+
                 if not global_validation.valid:
                     logger.warning(f"Global validation failed - marking as LOW QUALITY: {global_validation.violations}")
                     # Add violations to calibration errors but don't reject
@@ -1092,28 +1093,28 @@ class DTCalibration:
             else:
                 logger.debug("Global validation skipped - required arrays not available")
                 global_validation = None
-            
+
             # Step 6: Final decision logic with logging
             logger.info("Step 6: Final decision logic with logging")
             final_result = self.apply_decision_logic(calibration, cube, scene_id)
-            
+
             # Add global validation results to final result
             if global_validation is not None:
                 final_result.global_validation_passed = global_validation.valid
                 final_result.global_violations = global_validation.violations
-            
+
             # Add anchor physics issues to final result
             final_result.anchor_physics_valid = len(anchor_physics_issues) == 0
-            
+
             # Update final result based on physics and validation issues
             if anchor_physics_issues and calibration.valid:
                 # Physics constraints failed but calibration succeeded - mark as LOW QUALITY
                 final_result.scene_quality = "LOW_QUALITY"
                 final_result.rejection_reason = f"Physics constraint issues: {'; '.join(anchor_physics_issues)}"
-            
+
             logger.info(f"Unified calibration pipeline completed with status: {final_result.status.value}, quality: {final_result.scene_quality}")
             return final_result, anchor_result
-            
+
         except Exception as e:
             logger.error(f"Unified calibration pipeline failed: {e}")
             return CalibrationResult(
@@ -1121,11 +1122,11 @@ class DTCalibration:
                 dT_cold=0.0, dT_hot=0.0,
                 ts_cold=0.0, ts_hot=0.0,
                 air_temperature=293.15,
-                valid=False, errors=[f"Pipeline execution error: {str(e)}"],
+                valid=False, errors=[f"Pipeline execution error: {e!s}"],
                 status=CalibrationStatus.REJECTED,
                 scene_quality="REJECTED",
                 timestamp=datetime.now(),
-                rejection_reason=f"Pipeline error: {str(e)}",
+                rejection_reason=f"Pipeline error: {e!s}",
                 # NEW: Anchor pixel metadata fields with defaults
                 cold_pixel_ndvi=np.nan,
                 cold_pixel_albedo=np.nan,
@@ -1136,8 +1137,8 @@ class DTCalibration:
                 hot_pixel_x=0,
                 hot_pixel_y=0
             ), None
-    
-    def _perform_scene_prevalidation(self, cube, qa_pixel=None, roi_mask=None) -> Tuple[bool, str]:
+
+    def _perform_scene_prevalidation(self, cube, qa_pixel=None, roi_mask=None) -> tuple[bool, str]:
         """
         Perform scene-level pre-validation (HARD REJECT) checks.
 
@@ -1148,7 +1149,6 @@ class DTCalibration:
         Returns:
             Tuple of (rejected: bool, reason: str)
         """
-        from ..core.constants import MJ_M2_DAY_TO_W
 
         logger = logging.getLogger(__name__)
 
@@ -1199,19 +1199,19 @@ class DTCalibration:
             if valid_pixel_fraction < qa_reject_threshold:
                 # Reject if more than 70% pixels lost (cloud masked)
                 return True, f"QA coverage too low (severe pixel loss): {valid_pixel_fraction:.3f} < {qa_reject_threshold:.2f}"
-            
+
             # NOTE: NDVI dynamic range, Net radiation, and ET0_inst checks have been removed
             # to allow all scenes to proceed to ET calculation regardless of these metrics
             # Only severe QA issues (< 0.30) trigger rejection
 
             logger.info("Scene-level pre-validation passed")
             return False, ""
-            
+
         except Exception as e:
             logger.error(f"Error in scene pre-validation: {e}")
-            return True, f"Pre-validation error: {str(e)}"
-    
-    def _perform_anchor_physics_validation(self, cube, anchor_result, energy_balance_manager) -> Tuple[bool, List[str]]:
+            return True, f"Pre-validation error: {e!s}"
+
+    def _perform_anchor_physics_validation(self, cube, anchor_result, energy_balance_manager) -> tuple[bool, list[str]]:
         """
         Perform anchor pixel physics validation.
         
@@ -1224,7 +1224,7 @@ class DTCalibration:
             Tuple of (valid: bool, issues: List[str])
         """
         logger = logging.getLogger(__name__)
-        
+
         try:
             # Set temporary calibration for anchor validation
             # Use temporary coefficients for validation
@@ -1245,44 +1245,44 @@ class DTCalibration:
                 hot_pixel_x=0,
                 hot_pixel_y=0
             )
-            
+
             energy_balance_manager.set_anchor_pixel_calibration(
                 temp_calibration.a_coefficient, temp_calibration.b_coefficient
             )
-            
+
             # Calculate energy balance to get H, LE at anchor pixels
             eb_results = energy_balance_manager.calculate(cube)
-            
+
             # Get anchor pixel data
             cold_y, cold_x = anchor_result.cold_pixel.y, anchor_result.cold_pixel.x
             hot_y, hot_x = anchor_result.hot_pixel.y, anchor_result.hot_pixel.x
-            
+
             # Extract energy balance values at anchor pixels
             h_array = cube.get("H")
             le_array = cube.get("LE")
             rn_array = cube.get("R_n")
             g_array = cube.get("G")
-            
+
             if h_array is None or le_array is None:
                 logger.warning("H and LE arrays not available for anchor validation")
                 return True, []  # Skip validation if data not available
-            
+
             # Cold pixel validation
             cold_h = float(h_array[cold_y, cold_x])
             cold_le = float(le_array[cold_y, cold_x])
             cold_rn = float(rn_array[cold_y, cold_x])
             cold_g = float(g_array[cold_y, cold_x])
-            
+
             # Hot pixel validation
             hot_h = float(h_array[hot_y, hot_x])
             hot_le = float(le_array[hot_y, hot_x])
             hot_rn = float(rn_array[hot_y, hot_x])
             hot_g = float(g_array[hot_y, hot_x])
-            
+
             # Validate using EnergyBalanceValidator
             from .validation import EnergyBalanceValidator
             validator = EnergyBalanceValidator()
-            
+
             # Prepare data for validation
             cold_pixel_data = {
                 'LE': cold_le,
@@ -1292,7 +1292,7 @@ class DTCalibration:
                 'dT': anchor_result.cold_pixel.temperature - temp_calibration.air_temperature,
                 'ETrF': 1.05  # Expected cold pixel ETrF
             }
-            
+
             hot_pixel_data = {
                 'LE': hot_le,
                 'H': hot_h,
@@ -1301,36 +1301,36 @@ class DTCalibration:
                 'dT': anchor_result.hot_pixel.temperature - temp_calibration.air_temperature,
                 'ETrF': 0.05  # Expected hot pixel ETrF
             }
-            
+
             et0_inst = cube.get("et0_fao_evapotranspiration")
             et0_inst_value = float(np.nanmean(et0_inst.values)) / 24.0 if et0_inst is not None else 0.5
-            
+
             validation_result = validator.validate_full(
                 cold_pixel_data, hot_pixel_data, et0_inst_value
             )
-            
+
             # Log validation results
             logger.info(
                 f"Anchor physics validation: Cold valid={validation_result.cold_pixel_valid}, "
                 f"Hot valid={validation_result.hot_pixel_valid}"
             )
-            
+
             issues = []
             if validation_result.cold_pixel_issues:
                 logger.debug(f"Cold pixel issues: {validation_result.cold_pixel_issues}")
                 issues.extend([f"Cold pixel: {issue}" for issue in validation_result.cold_pixel_issues])
-            
+
             if validation_result.hot_pixel_issues:
                 logger.debug(f"Hot pixel issues: {validation_result.hot_pixel_issues}")
                 issues.extend([f"Hot pixel: {issue}" for issue in validation_result.hot_pixel_issues])
-            
+
             valid = validation_result.cold_pixel_valid and validation_result.hot_pixel_valid
             return valid, issues
-            
+
         except Exception as e:
             logger.error(f"Error in anchor physics validation: {e}")
-            return True, [f"Validation error: {str(e)}"]  # Continue on error but log issue
-    
+            return True, [f"Validation error: {e!s}"]  # Continue on error but log issue
+
     def _get_air_temperature(self, cube) -> float:
         """
         Get air temperature from cube.
@@ -1385,18 +1385,18 @@ class DTCalibration:
             ValueError: If validation fails and raise_on_failure is True
         """
         logger = logging.getLogger(__name__)
-        
+
         # Create validator instance
         validator = GlobalPostCalibrationValidator()
-        
+
         logger.info("Performing global post-calibration validation...")
-        
+
         # Perform validation
         if raise_on_failure:
             result = validator.validate_or_raise(ef, h, etrf)
         else:
             result = validator.validate_global_calibration(ef, h, etrf)
-        
+
         # Add validation info to logger
         if result.valid:
             logger.info(
@@ -1408,9 +1408,9 @@ class DTCalibration:
             logger.error(
                 f"Global validation FAILED: {len(result.violations)} violations detected"
             )
-        
+
         return result
-    
+
     def compute_dT_map(
         self,
         ts: xr.DataArray,
@@ -1432,8 +1432,8 @@ class DTCalibration:
             'description': 'Temperature difference (Ts - Ta) for METRIC'
         })
         return dT
-    
-    def to_dict(self, result: CalibrationResult) -> Dict[str, Any]:
+
+    def to_dict(self, result: CalibrationResult) -> dict[str, Any]:
         """
         Convert calibration result to dictionary.
 
@@ -1480,6 +1480,6 @@ class DTCalibration:
             "h_hot": float(result.h_hot),
             "le_hot": float(result.le_hot)
         }
-    
+
     def __repr__(self) -> str:
         return "DTCalibration()"

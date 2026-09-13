@@ -5,33 +5,26 @@ GeoTIFF bands and metadata for ETa calculations.
 """
 
 import json
-import os
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Union
 
 import numpy as np
 import rasterio
 import xarray as xr
-from rasterio.io import MemoryFile
-from rasterio.warp import calculate_default_transform, reproject
 
 from ..core.datacube import DataCube
 
 
 class LandsatReaderError(Exception):
     """Base exception for LandsatReader errors."""
-    pass
 
 
 class MTLParseError(LandsatReaderError):
     """Exception raised when MTL metadata parsing fails."""
-    pass
 
 
 class BandNotFoundError(LandsatReaderError):
     """Exception raised when a required band is not found."""
-    pass
 
 
 class LandsatReader:
@@ -54,7 +47,7 @@ class LandsatReader:
         >>> reader = LandsatReader(band_mapping=custom_mapping)
         >>> cube = reader.load("data/custom_scene/")
     """
-    
+
     # Default band name to filename mapping for Landsat 8/9 (OLI)
     DEFAULT_BAND_MAPPING = {
         'blue': 'blue.tif',
@@ -67,11 +60,11 @@ class LandsatReader:
         'qa': 'qa.tif',
         'qa_pixel': 'qa_pixel.tif',
     }
-    
+
     # Keep BAND_MAPPING as alias for backward compatibility
     BAND_MAPPING = DEFAULT_BAND_MAPPING
-    
-    def __init__(self, band_mapping: Optional[Dict[str, str]] = None):
+
+    def __init__(self, band_mapping: dict[str, str] | None = None):
         """Initialize the LandsatReader with optional custom band mapping.
         
         Args:
@@ -82,7 +75,7 @@ class LandsatReader:
         self.band_mapping = band_mapping if band_mapping is not None else self.DEFAULT_BAND_MAPPING.copy()
         # Keep scale_factors and add_offsets synchronized with band_mapping
         self._sync_scale_factors()
-    
+
     def _sync_scale_factors(self):
         """Synchronize scale factors and offsets with current band_mapping."""
         # Default scale factors for standard Landsat bands
@@ -94,14 +87,14 @@ class LandsatReader:
             'blue': 0.0, 'green': 0.0, 'red': 0.0, 'nir08': 0.0,
             'swir16': 0.0, 'swir22': 0.0, 'lwir11': 0.0, 'qa': 0.0, 'qa_pixel': 0.0
         }
-        
+
         # Build instance-specific scale factors and offsets
         self.SCALE_FACTORS = {}
         self.ADD_OFFSETS = {}
         for band_name in self.band_mapping.keys():
             self.SCALE_FACTORS[band_name] = default_scales.get(band_name, 1.0)
             self.ADD_OFFSETS[band_name] = default_offsets.get(band_name, 0.0)
-    
+
     def load(self, scene_path: str) -> DataCube:
         """
         Load all bands from a Landsat scene folder.
@@ -116,23 +109,23 @@ class LandsatReader:
             LandsatReaderError: If scene path doesn't exist or bands are missing
         """
         scene_path = Path(scene_path)
-        
+
         if not scene_path.exists():
             raise LandsatReaderError(f"Scene path does not exist: {scene_path}")
-        
+
         if not scene_path.is_dir():
             raise LandsatReaderError(f"Scene path is not a directory: {scene_path}")
-        
+
         # Initialize DataCube
         cube = DataCube()
-        
+
         # Parse MTL metadata
         mtl_path = scene_path / 'MTL.json'
         if not mtl_path.exists():
             raise MTLParseError(f"MTL.json not found at: {mtl_path}")
-        
+
         mtl_data = self._read_mtl(mtl_path)
-        
+
         # Read each band using instance's band_mapping (supports custom mapping)
         for band_name, filename in self.band_mapping.items():
             band_path = scene_path / filename
@@ -141,21 +134,21 @@ class LandsatReader:
                 if band_name in ['qa', 'qa_pixel']:
                     continue
                 raise BandNotFoundError(f"Band file not found: {band_path}")
-            
+
             data = self._read_band(band_path)
             data = self._apply_scaling(data, band_name)
             cube.add(band_name, data)
-        
+
         # Add metadata from MTL
         cube.metadata['sun_elevation'] = mtl_data.get('sun_elevation')
         cube.metadata['sun_azimuth'] = mtl_data.get('sun_azimuth')
         cube.metadata['cloud_cover'] = mtl_data.get('cloud_cover', 0.0)
         cube.metadata['path'] = mtl_data.get('path')
         cube.metadata['row'] = mtl_data.get('row')
-        
+
         # Extract platform from MTL (e.g., 'landsat-8', 'landsat-9')
         cube.metadata['platform'] = mtl_data.get('platform', 'unknown')
-        
+
         # Extract sensor from instruments (combine multiple instruments with '_')
         instruments = mtl_data.get('instruments', [])
         if instruments:
@@ -176,20 +169,20 @@ class LandsatReader:
                 cube.metadata['sensor'] = 'tm'
             else:
                 cube.metadata['sensor'] = 'unknown'
-        
+
         # Extract processing level/correction from landsat:correction (e.g., 'L2SP')
         correction = mtl_data.get('landsat_correction', mtl_data.get('correction', 'L2'))
         cube.metadata['correction'] = correction
         cube.metadata['processing_level'] = correction or 'L2'
-        
+
         # Extract scene_id - always set from LANDSAT_PRODUCT_ID or item_id as fallback
         scene_id = mtl_data.get('LANDSAT_PRODUCT_ID') or mtl_data.get('item_id', 'unknown')
         cube.metadata['scene_id'] = scene_id
-        
+
         # Also store item_id separately if available
         if mtl_data.get('item_id'):
             cube.metadata['item_id'] = mtl_data.get('item_id')
-        
+
         # Set acquisition time
         if 'datetime' in mtl_data:
             try:
@@ -202,7 +195,7 @@ class LandsatReader:
                     cube.acquisition_time = datetime.combine(date_obj, datetime.min.time())
                 except ValueError:
                     cube.acquisition_time = None
-        
+
         # Set CRS and transform from first band in the mapping
         first_band_filename = next(iter(self.band_mapping.values()))
         first_band_path = scene_path / first_band_filename
@@ -212,10 +205,10 @@ class LandsatReader:
             cube.extent = src.bounds
             if 'resolution' not in cube.metadata:
                 cube.metadata['resolution'] = src.res[0]
-        
+
         return cube
-    
-    def _read_mtl(self, mtl_path: Union[str, Path]) -> Dict:
+
+    def _read_mtl(self, mtl_path: str | Path) -> dict:
         """
         Parse MTL.json metadata file.
         
@@ -230,13 +223,13 @@ class LandsatReader:
         """
         import logging
         logger = logging.getLogger(__name__)
-        
+
         try:
-            with open(mtl_path, 'r') as f:
+            with open(mtl_path) as f:
                 mtl_data = json.load(f)
-            
+
             logger.debug(f"MTL.json loaded from {mtl_path}")
-            
+
             # Extract key fields to top level for easier access
             # This handles the nested STAC-like structure
             extracted = {
@@ -252,9 +245,9 @@ class LandsatReader:
                 'scene_id': mtl_data.get('landsat:scene_id') or mtl_data.get('item_id'),
                 'LANDSAT_PRODUCT_ID': mtl_data.get('item_id'),
             }
-            
+
             logger.debug(f"Initial extracted: item_id={extracted.get('item_id')}, scene_id={extracted.get('scene_id')}")
-            
+
             # Extract from properties object if it exists
             properties = mtl_data.get('properties', {})
             if properties:
@@ -271,7 +264,7 @@ class LandsatReader:
                     extracted['platform'] = properties.get('platform')
                 if 'instruments' in properties:
                     extracted['instruments'] = properties.get('instruments')
-            
+
             # Extract from METADATA object if it exists
             metadata = mtl_data.get('METADATA', {})
             product_metadata = metadata.get('PRODUCT_METADATA', {})
@@ -285,17 +278,17 @@ class LandsatReader:
                     extracted['row'] = product_metadata.get('WRS Row')
                 if 'CLOUD_COVER' in product_metadata:
                     extracted['cloud_cover'] = product_metadata.get('CLOUD_COVER')
-            
+
             logger.debug(f"Final extracted: item_id={extracted.get('item_id')}, LANDSAT_PRODUCT_ID={extracted.get('LANDSAT_PRODUCT_ID')}, scene_id={extracted.get('scene_id')}, platform={extracted.get('platform')}, instruments={extracted.get('instruments')}")
-            
+
             return extracted
-            
+
         except json.JSONDecodeError as e:
             raise MTLParseError(f"Failed to parse MTL.json: {e}")
-        except IOError as e:
+        except OSError as e:
             raise MTLParseError(f"Failed to read MTL.json: {e}")
-    
-    def _read_band(self, band_path: Union[str, Path]) -> xr.DataArray:
+
+    def _read_band(self, band_path: str | Path) -> xr.DataArray:
         """
         Read a single band GeoTIFF file.
         
@@ -307,19 +300,19 @@ class LandsatReader:
         """
         with rasterio.open(band_path) as src:
             data = src.read(1)
-            
+
             # Get coordinates
             height, width = data.shape
             transform = src.transform
-            
+
             # Create coordinate arrays
             rows = np.arange(height)
             cols = np.arange(width)
-            
+
             # Calculate real-world coordinates
             x_coords = transform[2] + transform[0] * (cols + 0.5)
             y_coords = transform[5] + transform[4] * (rows + 0.5)
-            
+
             # Create DataArray with coordinates
             da = xr.DataArray(
                 data,
@@ -332,9 +325,9 @@ class LandsatReader:
                     'dtype': str(data.dtype),
                 }
             )
-        
+
         return da
-    
+
     def _apply_scaling(self, data: xr.DataArray, band_name: str) -> xr.DataArray:
         """
         Apply scale factors and offsets to band data.
@@ -374,7 +367,7 @@ class LandsatReader:
         scaled_data.attrs['add_offset'] = offset
 
         return scaled_data
-    
+
     def _reproject_to_utm(self, data: xr.DataArray, target_crs: str) -> xr.DataArray:
         """
         Reproject data to a target CRS (UTM zone).
@@ -389,7 +382,7 @@ class LandsatReader:
         # This is a placeholder - full implementation would use rasterio.warp
         # For now, we assume data is already in consistent CRS
         return data
-    
+
     def get_band_path(self, scene_path: str, band_name: str) -> Path:
         """
         Get the full path to a specific band file.
@@ -406,10 +399,10 @@ class LandsatReader:
         """
         if band_name not in self.band_mapping:
             raise BandNotFoundError(f"Unknown band: {band_name}")
-        
+
         return Path(scene_path) / self.band_mapping[band_name]
-    
-    def validate_scene(self, scene_path: str) -> Tuple[bool, list]:
+
+    def validate_scene(self, scene_path: str) -> tuple[bool, list]:
         """
         Validate that a scene contains all required bands.
         
@@ -421,18 +414,18 @@ class LandsatReader:
         """
         scene_path = Path(scene_path)
         missing_bands = []
-        
+
         for band_name, filename in self.band_mapping.items():
             band_path = scene_path / filename
             if not band_path.exists():
                 # Skip optional QA bands in validation
                 if band_name not in ['qa', 'qa_pixel']:
                     missing_bands.append(band_name)
-        
+
         return len(missing_bands) == 0, missing_bands
 
 
-def read_landsat_scene(scene_path: str, band_mapping: Optional[Dict[str, str]] = None) -> DataCube:
+def read_landsat_scene(scene_path: str, band_mapping: dict[str, str] | None = None) -> DataCube:
     """
     Convenience function to load a Landsat scene.
     

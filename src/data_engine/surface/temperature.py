@@ -1,8 +1,8 @@
 """Land Surface Temperature (LST) calculations for METRIC ETa model."""
 
+
 import numpy as np
 import xarray as xr
-from typing import Optional
 
 from ..core.datacube import DataCube
 
@@ -34,7 +34,6 @@ class LSTCalculator:
 
     def __init__(self):
         """Initialize LSTCalculator."""
-        pass
 
     def compute(self, cube: DataCube) -> DataCube:
         """
@@ -57,8 +56,8 @@ class LSTCalculator:
     def compute_lst(
         self,
         cube: DataCube,
-        brightness_temp: Optional[xr.DataArray] = None,
-        emissivity: Optional[xr.DataArray] = None
+        brightness_temp: xr.DataArray | None = None,
+        emissivity: xr.DataArray | None = None
     ) -> xr.DataArray:
         """
         Compute Land Surface Temperature using METRIC formulation.
@@ -111,7 +110,7 @@ class LSTCalculator:
             'range': '[250.0, 350.0]',
             'method': 'METRIC LST from brightness temperature and emissivity',
             'thermal_band': 'lwir11',
-            'wavelength': f'{self.LAMBDA*1e6:.3f} μm',
+            'wavelength': f'{self.LAMBDA * 1e6:.3f} μm',
             'formula': 'Ts = Tb / (1 + (λ*Tb/ρ)*ln(ε))'
         }
 

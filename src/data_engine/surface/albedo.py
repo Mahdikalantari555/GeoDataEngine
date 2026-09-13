@@ -1,8 +1,8 @@
 """Albedo calculations for METRIC ETa model."""
 
+
 import numpy as np
 import xarray as xr
-from typing import Optional
 
 from ..core.datacube import DataCube
 
@@ -23,7 +23,7 @@ class AlbedoCalculator:
         use_collection2: Use Landsat Collection 2 coefficients (default: True)
         dark_pixel_correction: Apply dark pixel correction (default: True)
     """
-    
+
     # Coefficients for Landsat Collection 1 (TMAD)
     COEFFS_COLLECTION1 = {
         'blue': 0.356,
@@ -33,7 +33,7 @@ class AlbedoCalculator:
         'swir2': 0.072,
         'intercept': -0.0018
     }
-    
+
     # Coefficients for Landsat Collection 2
     COEFFS_COLLECTION2 = {
         'blue': 0.254,
@@ -43,7 +43,7 @@ class AlbedoCalculator:
         'swir2': 0.091,
         'intercept': 0.066
     }
-    
+
     def __init__(
         self,
         use_collection2: bool = True,
@@ -64,7 +64,7 @@ class AlbedoCalculator:
         self.dark_pixel_correction = dark_pixel_correction
         self.min_albedo = min_albedo
         self.max_albedo = max_albedo
-    
+
     def compute(self, cube: DataCube) -> DataCube:
         """
         Compute broadband albedo and add to DataCube.
@@ -101,7 +101,7 @@ class AlbedoCalculator:
             cube.add("albedo", default_albedo)
             logger.info("Default albedo added to DataCube")
             return cube
-    
+
     def _get_nodata_mask(self, cube: DataCube) -> xr.DataArray:
         """
         Get nodata mask from available QA bands.
@@ -114,20 +114,20 @@ class AlbedoCalculator:
         """
         if "qa_pixel" in cube.bands():
             qa = cube.get("qa_pixel")
-            
+
             # Handle NaN values in QA band (from cloud masking)
             if np.any(np.isnan(qa.values)):
                 # If QA band has NaN values, use the NaN mask directly
                 # This means cloud masking has already been applied
                 valid_mask = ~np.isnan(qa.values)
                 return xr.DataArray(valid_mask, dims=['y', 'x'])
-            
+
             # Original logic for non-NaN QA values
             # Ensure proper integer type for bit operations
             qa_values = qa.values
             if qa_values.dtype.kind not in ['u', 'i']:
                 qa_values = qa_values.astype(np.uint32)
-            
+
             # Cloud masks (bits 1-3 for Landsat 8/9)
             cloud_mask = ~(
                 ((qa_values >> 1) & 1).astype(bool) |
@@ -135,13 +135,13 @@ class AlbedoCalculator:
                 ((qa_values >> 3) & 1).astype(bool)
             )
             return xr.DataArray(cloud_mask, dims=['y', 'x'])
-        
+
         first_band = next(iter(cube.data.values()))
         return xr.DataArray(
             np.ones(first_band.shape, dtype=bool),
             dims=['y', 'x']
         )
-    
+
     def compute_albedo(self, cube: DataCube) -> xr.DataArray:
         """
         Compute broadband shortwave albedo.
@@ -244,7 +244,7 @@ class AlbedoCalculator:
                 }
             )
             return default_albedo
-    
+
     def compute_directional_hemispherical_albedo(
         self,
         cube: DataCube,
@@ -265,30 +265,30 @@ class AlbedoCalculator:
         albedo = cube.get("albedo")
         if albedo is None:
             albedo = self.compute_albedo(cube)
-        
+
         # Simple correction using hotspot parameterization
         # For near-nadir viewing, the correction is minimal
         mu0 = np.cos(solar_zenith_angle)
-        
+
         # Avoid division by zero for high zenith angles
         mu0 = np.maximum(mu0, 0.1)
-        
+
         # Apply directional correction
         # This is a simplified version; more complex BRDF models exist
         dhr_albedo = albedo * (1.0 + 0.1 * (1.0 - mu0))
-        
+
         # Clamp to valid range
         dhr_albedo = dhr_albedo.clip(self.min_albedo, self.max_albedo)
-        
+
         dhr_albedo.name = "albedo_black_sky"
         dhr_albedo.attrs = {
             'long_name': 'Directional-Hemispherical Reflectance (Black-sky)',
             'units': 'dimensionless',
             'solar_zenith_rad': solar_zenith_angle
         }
-        
+
         return dhr_albedo
-    
+
     def compute_bihemispherical_albedo(
         self,
         cube: DataCube,
@@ -309,19 +309,19 @@ class AlbedoCalculator:
         albedo = cube.get("albedo")
         if albedo is None:
             albedo = self.compute_albedo(cube)
-        
+
         # White-sky albedo is typically higher than black-sky
         whr_albedo = albedo * (1.0 + 0.05 * (1.0 - average_solar_zenith))
-        
+
         # Clamp to valid range
         whr_albedo = whr_albedo.clip(self.min_albedo, self.max_albedo)
-        
+
         whr_albedo.name = "albedo_white_sky"
         whr_albedo.attrs = {
             'long_name': 'Bihemispherical Reflectance (White-sky)',
             'units': 'dimensionless'
         }
-        
+
         return whr_albedo
 
 
@@ -329,4 +329,4 @@ class AlbedoCalculator:
 Albedo = AlbedoCalculator
 
 
-__all__ = ['AlbedoCalculator', 'Albedo']
+__all__ = ['Albedo', 'AlbedoCalculator']

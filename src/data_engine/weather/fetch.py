@@ -10,7 +10,6 @@ to better represent spatial variability, with ~9km resolution from Open-Meteo.
 
 from datetime import datetime
 from pathlib import Path
-from typing import List, Optional, Tuple, Union
 
 import numpy as np
 import pandas as pd
@@ -19,17 +18,14 @@ import requests
 
 class WeatherFetchError(Exception):
     """Base exception for weather fetching errors."""
-    pass
 
 
 class APIRequestError(WeatherFetchError):
     """Exception raised when API request fails."""
-    pass
 
 
 class DataNotFoundError(WeatherFetchError):
     """Exception raised when requested weather data is not available."""
-    pass
 
 
 # Weather variables for Open-Meteo API
@@ -74,7 +70,7 @@ class WeatherFetcher:
         ...     output_dir="data"
         ... )
     """
-    
+
     def __init__(self, api_url: str = "https://archive-api.open-meteo.com/v1/archive",
                  timeout: int = 30):
         """
@@ -86,8 +82,8 @@ class WeatherFetcher:
         """
         self.api_url = api_url
         self.timeout = timeout
-    
-    def _generate_grid_points(self, bbox: tuple, spacing_deg: float = 0.05) -> List[tuple]:
+
+    def _generate_grid_points(self, bbox: tuple, spacing_deg: float = 0.05) -> list[tuple]:
         """
         Generate a grid of points within a bounding box.
         
@@ -99,11 +95,11 @@ class WeatherFetcher:
             List of (lat, lon) tuples
         """
         min_lon, min_lat, max_lon, max_lat = bbox
-        
+
         # Calculate number of points in each direction
         n_lon = max(1, int(np.ceil((max_lon - min_lon) / spacing_deg)))
         n_lat = max(1, int(np.ceil((max_lat - min_lat) / spacing_deg)))
-        
+
         # Generate grid points
         points = []
         for i in range(n_lon):
@@ -111,17 +107,17 @@ class WeatherFetcher:
             for j in range(n_lat):
                 lat = min_lat + j * spacing_deg
                 points.append((lat, lon))
-        
+
         return points
-    
+
     def download(
         self,
-        date: Union[str, datetime],
-        lat: Optional[float] = None,
-        lon: Optional[float] = None,
-        points: Optional[List[tuple]] = None,
-        bbox: Optional[tuple] = None,
-        output_dir: Union[str, Path] = "data",
+        date: str | datetime,
+        lat: float | None = None,
+        lon: float | None = None,
+        points: list[tuple] | None = None,
+        bbox: tuple | None = None,
+        output_dir: str | Path = "data",
         target_hour: int = 7,
         timezone: str = "UTC",
         grid_spacing: float = 0.05
@@ -158,16 +154,16 @@ class WeatherFetcher:
             date_str = date.strftime("%Y-%m-%d")
         else:
             date_str = date
-        
+
         # Validate date format
         try:
             datetime.strptime(date_str, "%Y-%m-%d")
         except ValueError as e:
             raise ValueError(f"Invalid date format. Expected YYYY-MM-DD, got: {date_str}") from e
-        
+
         # Determine points to query
         query_points = []
-        
+
         if points is not None:
             # Multiple points mode
             if not isinstance(points, list):
@@ -186,25 +182,23 @@ class WeatherFetcher:
         else:
             raise ValueError(
                 "Must specify either (lat, lon), points list, or bbox. "
-                "Got: lat={}, lon={}, points={}, bbox={}".format(
-                    lat, lon, points, bbox
-                )
+                f"Got: lat={lat}, lon={lon}, points={points}, bbox={bbox}"
             )
-        
+
         # Create output directory if it doesn't exist
         output_path = Path(output_dir)
         output_path.mkdir(parents=True, exist_ok=True)
-        
+
         # Generate filename
         date_clean = date_str.replace("-", "")
         if len(query_points) == 1:
             weather_file = output_path / f"weather_{date_clean}_7am_UTC.csv"
         else:
             weather_file = output_path / f"weather_{date_clean}_7am_UTC_multi.csv"
-        
+
         # Download weather for each point
         all_weather_data = []
-        
+
         for idx, (lat, lon) in enumerate(query_points):
             try:
                 # Prepare request parameters for single point
@@ -218,7 +212,7 @@ class WeatherFetcher:
                     "models": "best_match",
                     "timezone": timezone
                 }
-                
+
                 # Make API request
                 response = requests.get(
                     self.api_url,
@@ -226,29 +220,29 @@ class WeatherFetcher:
                     timeout=self.timeout
                 )
                 response.raise_for_status()
-                
+
                 weather_data = response.json()
                 hourly = weather_data.get("hourly", {})
-                
+
                 if not hourly or "time" not in hourly:
-                    raise DataNotFoundError(f"No hourly data available for point {idx+1} ({lat}, {lon})")
-                
+                    raise DataNotFoundError(f"No hourly data available for point {idx + 1} ({lat}, {lon})")
+
                 # Create DataFrame from hourly data
                 df_dict = {"time": pd.to_datetime(hourly["time"])}
                 for var in HOURLY_WEATHER_VARS:
                     if var in hourly:
                         df_dict[var] = hourly[var]
-                
+
                 weather_df = pd.DataFrame(df_dict)
-                
+
                 # Filter for target hour
                 weather_target = weather_df[weather_df["time"].dt.hour == target_hour]
-                
+
                 if len(weather_target) == 0:
                     raise DataNotFoundError(
-                        f"No {target_hour}:00 {timezone} data available for point {idx+1} ({lat}, {lon})"
+                        f"No {target_hour}:00 {timezone} data available for point {idx + 1} ({lat}, {lon})"
                     )
-                
+
                 # Add location information
                 weather_target = weather_target.copy()
                 weather_target["latitude"] = lat
@@ -257,31 +251,31 @@ class WeatherFetcher:
                 weather_target["local_time"] = weather_target["time"] + pd.Timedelta(hours=3, minutes=30)
                 weather_target["time_zone"] = "UTC"
                 weather_target["local_time_zone"] = "IRST (UTC+3:30)"
-                
+
                 all_weather_data.append(weather_target)
-                
+
             except requests.exceptions.RequestException as e:
-                raise APIRequestError(f"API request failed for point {idx+1} ({lat}, {lon}): {str(e)}") from e
+                raise APIRequestError(f"API request failed for point {idx + 1} ({lat}, {lon}): {e!s}") from e
             except Exception as e:
-                raise WeatherFetchError(f"Error downloading weather for point {idx+1} ({lat}, {lon}): {str(e)}") from e
-        
+                raise WeatherFetchError(f"Error downloading weather for point {idx + 1} ({lat}, {lon}): {e!s}") from e
+
         # Combine all weather data
         if len(all_weather_data) > 1:
             combined_df = pd.concat(all_weather_data, ignore_index=True)
         else:
             combined_df = all_weather_data[0]
-        
+
         # Save to CSV
         combined_df.to_csv(weather_file, index=False)
-        
+
         return weather_file
-    
+
     def download_for_multiple_dates(
         self,
         dates: list,
         lat: float,
         lon: float,
-        output_dir: Union[str, Path]
+        output_dir: str | Path
     ) -> dict:
         """
         Download weather data for multiple dates.
@@ -296,7 +290,7 @@ class WeatherFetcher:
             Dictionary mapping dates to file paths or error messages
         """
         results = {}
-        
+
         for date in dates:
             try:
                 file_path = self.download(date, lat, lon, output_dir)
@@ -309,24 +303,24 @@ class WeatherFetcher:
             except Exception as e:
                 results[date] = {
                     "file": None,
-                    "status": f"error: {str(e)}",
+                    "status": f"error: {e!s}",
                     "utc_time": "07:00",
                     "iran_time": "10:30"
                 }
-        
+
         return results
 
 
 def download_weather_for_7am_utc(
-    date: Union[str, datetime],
-    lat: Optional[float] = None,
-    lon: Optional[float] = None,
-    points: Optional[List[tuple]] = None,
-    bbox: Optional[tuple] = None,
-    output_dir: Union[str, Path] = "data",
+    date: str | datetime,
+    lat: float | None = None,
+    lon: float | None = None,
+    points: list[tuple] | None = None,
+    bbox: tuple | None = None,
+    output_dir: str | Path = "data",
     api_url: str = "https://archive-api.open-meteo.com/v1/archive",
     grid_spacing: float = 0.05
-) -> Tuple[Optional[Path], str]:
+) -> tuple[Path | None, str]:
     """
     Download weather data specifically for 7:00 UTC (10:30 Iran time).
     
@@ -389,4 +383,4 @@ def download_weather_for_7am_utc(
         )
         return file_path, "Success"
     except Exception as e:
-        return None, f"Error: {str(e)}"
+        return None, f"Error: {e!s}"

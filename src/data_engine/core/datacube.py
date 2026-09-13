@@ -1,11 +1,12 @@
 """DataCube class for storing multi-band raster data."""
 
-from typing import Any, Dict, Optional, Union
-import numpy as np
-import xarray as xr
-from datetime import datetime
 from dataclasses import dataclass, field
+from datetime import datetime
+from typing import Any
+
+import numpy as np
 import rasterio.crs
+import xarray as xr
 
 
 @dataclass
@@ -24,15 +25,15 @@ class DataCube:
         metadata: Additional metadata dictionary
         extent: Geographic extent (xmin, ymin, xmax, ymax)
     """
-    
-    data: Dict[str, xr.DataArray] = field(default_factory=dict)
-    crs: Optional[rasterio.crs.CRS] = None
-    transform: Optional[np.ndarray] = None
-    acquisition_time: Optional[datetime] = None
-    metadata: Dict[str, Any] = field(default_factory=dict)
-    extent: Optional[tuple] = None
-    
-    def add(self, name: str, data: Union[xr.DataArray, np.ndarray, float]) -> 'DataCube':
+
+    data: dict[str, xr.DataArray] = field(default_factory=dict)
+    crs: rasterio.crs.CRS | None = None
+    transform: np.ndarray | None = None
+    acquisition_time: datetime | None = None
+    metadata: dict[str, Any] = field(default_factory=dict)
+    extent: tuple | None = None
+
+    def add(self, name: str, data: xr.DataArray | np.ndarray | float) -> 'DataCube':
         """
         Add a band or scalar value to the DataCube.
         
@@ -52,10 +53,10 @@ class DataCube:
             # Convert numpy array to DataArray
             da = xr.DataArray(data, dims=['y', 'x'])
             self.data[name] = da
-        
+
         return self
-    
-    def get(self, name: str) -> Union[xr.DataArray, Any, None]:
+
+    def get(self, name: str) -> xr.DataArray | Any | None:
         """
         Get a band or scalar value by name.
 
@@ -72,15 +73,15 @@ class DataCube:
         elif name == 'acquisition_time':
             return self.acquisition_time
         return None
-    
+
     def bands(self) -> list:
         """Return list of band names stored in data (not metadata)."""
         return list(self.data.keys())
-    
+
     def scalars(self) -> list:
         """Return list of scalar names stored in metadata."""
         return list(self.metadata.keys())
-    
+
     def shape(self, band_name: str) -> tuple:
         """
         Get the shape of a specific band.
@@ -97,7 +98,7 @@ class DataCube:
         if band_name not in self.data:
             raise KeyError(f"Band '{band_name}' not found in DataCube")
         return self.data[band_name].shape
-    
+
     @property
     def y_dim(self) -> int:
         """Get the y-dimension size (first dimension of bands)."""
@@ -105,7 +106,7 @@ class DataCube:
             raise ValueError("No data in DataCube")
         first_band = next(iter(self.data.values()))
         return first_band.shape[0]
-    
+
     @property
     def x_dim(self) -> int:
         """Get the x-dimension size (second dimension of bands)."""
@@ -113,7 +114,7 @@ class DataCube:
             raise ValueError("No data in DataCube")
         first_band = next(iter(self.data.values()))
         return first_band.shape[1]
-    
+
     def update_crs(self, crs: rasterio.crs.CRS, transform: np.ndarray) -> 'DataCube':
         """
         Update CRS and transform for the DataCube.
@@ -128,7 +129,7 @@ class DataCube:
         self.crs = crs
         self.transform = transform
         return self
-    
+
     def to_dict(self) -> dict:
         """
         Convert DataCube to dictionary for serialization.
@@ -144,7 +145,7 @@ class DataCube:
             'extent': self.extent,
             'shape': {'y': self.y_dim, 'x': self.x_dim}
         }
-    
+
     def __repr__(self) -> str:
         band_count = len(self.data)
         scalar_count = len(self.metadata)

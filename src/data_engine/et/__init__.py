@@ -25,19 +25,19 @@ Quality Classes:
     | Uncertain   | <0 or >1.5   | Requires review                 |
 """
 
-from .instantaneous_et import InstantaneousET, create_instantaneous_et
 from .daily_et import DailyET, create_daily_et
-from .quality import ETQuality, ETQualityClass, create_et_quality
 from .extrapolation import ETExtrapolator, create_extrapolator
+from .instantaneous_et import InstantaneousET, create_instantaneous_et
+from .quality import ETQuality, ETQualityClass, create_et_quality
 
 __all__ = [
-    'InstantaneousET',
-    'create_instantaneous_et',
     'DailyET',
-    'create_daily_et',
+    'ETExtrapolator',
     'ETQuality',
     'ETQualityClass',
+    'InstantaneousET',
+    'create_daily_et',
     'create_et_quality',
-    'ETExtrapolator',
-    'create_extrapolator'
+    'create_extrapolator',
+    'create_instantaneous_et'
 ]

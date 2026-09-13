@@ -1,6 +1,5 @@
 """Configuration settings for METRIC ETa model."""
 
-import os
 from pathlib import Path
 
 # ============================================================================
@@ -28,7 +27,7 @@ VISUALIZATIONS_DIR = OUTPUT_DIR / "visualizations"
 # Reflectance bands for Landsat 8/9
 REFLECTANCE_BANDS = [
     "blue",
-    "green", 
+    "green",
     "red",
     "nir08",
     "swir16",
@@ -84,15 +83,6 @@ DEM_RESOLUTION = 30  # Match Landsat resolution
 # PHYSICAL CONSTANTS (from core/constants.py)
 # ============================================================================
 
-from ..core.constants import (
-    STEFAN_BOLTZMANN,
-    VON_KARMAN,
-    AIR_DENSITY,
-    AIR_SPECIFIC_HEAT,
-    LATENT_HEAT_VAPORIZATION,
-    SOLAR_CONSTANT,
-    GRAVITATIONAL_ACCELERATION
-)
 
 # ============================================================================
 # MODEL PARAMETERS

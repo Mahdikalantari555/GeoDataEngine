@@ -25,14 +25,11 @@ Fraction of Available Energy (EF):
     - EF > 1.0 possible for advection conditions (LE > Rn - G)
 """
 
-import numpy as np
-from typing import Dict, Optional
 from dataclasses import dataclass
 
-from data_engine.core.constants import (
-    LATENT_HEAT_VAPORIZATION,
-    FREEZING_POINT
-)
+import numpy as np
+
+from data_engine.core.constants import LATENT_HEAT_VAPORIZATION
 
 
 @dataclass
@@ -40,24 +37,24 @@ class LatentHeatFluxConfig:
     """Configuration for latent heat flux calculation."""
     # Minimum EF (evaporative fraction) - safety floor
     min_ef: float = 0.0
-    
+
     # Maximum EF (evaporative fraction) - safety ceiling
     # PHYSICAL LIMIT: EF can theoretically reach 2 for fully wet surfaces
     # Values > 2 indicate energy balance issues (negative H or measurement errors)
     max_ef: float = 2.0
-    
+
     # Allow negative LE (advection conditions)
     allow_negative_le: bool = False
-    
+
     # LE floor (W/m²)
     min_le: float = -100.0
-    
+
     # LE ceiling (W/m²)
     max_le: float = 1000.0
-    
+
     # Minimum available energy for LE calculation
     min_available_energy: float = 10.0
-    
+
     # Quality flag threshold
     quality_threshold: float = 0.8
 
@@ -77,8 +74,8 @@ class LatentHeatFlux:
     Attributes:
         config: Configuration parameters for LE calculation
     """
-    
-    def __init__(self, config: Optional[LatentHeatFluxConfig] = None):
+
+    def __init__(self, config: LatentHeatFluxConfig | None = None):
         """
         Initialize LatentHeatFlux calculator.
         
@@ -86,7 +83,7 @@ class LatentHeatFlux:
             config: Optional configuration parameters. Uses defaults if not provided.
         """
         self.config = config or LatentHeatFluxConfig()
-    
+
     def calculate_available_energy(
         self,
         rn: np.ndarray,
@@ -103,7 +100,7 @@ class LatentHeatFlux:
             Available energy (W/m²)
         """
         return rn - G
-    
+
     def calculate_le_residual(
         self,
         rn: np.ndarray,
@@ -124,7 +121,7 @@ class LatentHeatFlux:
             Latent heat flux (W/m²)
         """
         return rn - G - H
-    
+
     def calculate_ef(
         self,
         le: np.ndarray,
@@ -148,11 +145,11 @@ class LatentHeatFlux:
             np.sign(available_energy) * self.config.min_available_energy,
             available_energy
         )
-        
+
         ef = le / ae_safe
-        
+
         return ef
-    
+
     def apply_energy_balance_constraints(
         self,
         le: np.ndarray,
@@ -195,7 +192,7 @@ class LatentHeatFlux:
             # )
 
         return le
-    
+
     def calculate_et_instantaneous(
         self,
         le: np.ndarray,
@@ -219,17 +216,17 @@ class LatentHeatFlux:
         # ET (mm/s) = LE (W/m²) / λ (J/kg)
         # Since 1 kg/m² = 1 mm water, density cancels out
         # ET (mm/hr) = LE * 3600 / λ
-        
+
         et_mm_hr = le * 3600.0 / lambda_vaporization
-        
+
         return et_mm_hr
-    
+
     def calculate_et_fraction(
         self,
         le: np.ndarray,
         eto: np.ndarray,
         etr: np.ndarray
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Calculate ET fractions (ETrF and EToF).
         
@@ -245,30 +242,30 @@ class LatentHeatFlux:
             Dictionary with ET fractions
         """
         et_inst = self.calculate_et_instantaneous(le)
-        
+
         # Calculate fractions
         etrf = np.where(etr > 0, et_inst / etr, 0.0)
         etof = np.where(eto > 0, et_inst / eto, 0.0)
-        
+
         # Clip to reasonable range based on configuration
         # Allow higher values for stressed or irrigated conditions
         max_et_fraction = 2.0  # Set to match ETrF max
         etrf = np.clip(etrf, 0.0, max_et_fraction)
         etof = np.clip(etof, 0.0, max_et_fraction)
-        
+
         return {
             'ET_inst': et_inst,
             'ETrF': etrf,
             'EToF': etof
         }
-    
+
     def quality_check(
         self,
         le: np.ndarray,
         rn: np.ndarray,
         G: np.ndarray,
         H: np.ndarray
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Perform quality checks on LE calculation.
         
@@ -284,20 +281,20 @@ class LatentHeatFlux:
             Dictionary with quality metrics
         """
         available_energy = rn - G
-        
+
         # Energy balance residual
         residual = rn - G - H - le
-        
+
         # Relative residual
         rel_residual = np.where(
             np.abs(available_energy) > 1.0,
             residual / np.abs(available_energy),
             0.0
         )
-        
+
         # Quality flag (1.0 = good, 0.0 = bad)
         quality = np.ones_like(le, dtype=np.float64)
-        
+
         # Check for energy balance violations
         # LE should be >= 0 (when AE > 0), but can exceed available_energy for advection
         quality = np.where(
@@ -305,7 +302,7 @@ class LatentHeatFlux:
             0.0,
             quality
         )
-        
+
         # Check for large residuals
         # Improved scaling to prevent negative quality values
         quality_reduction = np.where(
@@ -314,7 +311,7 @@ class LatentHeatFlux:
             0.0
         )
         quality = np.maximum(quality - quality_reduction, 0.0)  # Ensure non-negative
-        
+
         # Additional quality checks for energy balance violations
         # LE should be >= 0 (when AE > 0) for standard cases, but can exceed available_energy
         if not self.config.allow_negative_le:
@@ -323,22 +320,22 @@ class LatentHeatFlux:
                 0.0,
                 quality
             )
-        
+
         return {
             'quality_flag': quality,
             'residual': residual,
             'relative_residual': rel_residual,
             'available_energy': available_energy
         }
-    
+
     def calculate(
         self,
         rn: np.ndarray,
         G: np.ndarray,
         H: np.ndarray,
-        ts_kelvin: Optional[np.ndarray] = None,
+        ts_kelvin: np.ndarray | None = None,
         apply_constraints: bool = True
-    ) -> Dict[str, np.ndarray]:
+    ) -> dict[str, np.ndarray]:
         """
         Calculate latent heat flux and related parameters with comprehensive validation.
         
@@ -370,26 +367,26 @@ class LatentHeatFlux:
         rn = to_numpy(rn)
         G = to_numpy(G)
         H = to_numpy(H)
-        
+
         # Validate input shapes
         if not (rn.shape == G.shape == H.shape):
             raise ValueError(f"Input arrays must have same shape. Got rn: {rn.shape}, G: {G.shape}, H: {H.shape}")
-        
+
         # Validate units (basic checks)
         if np.any(np.abs(rn) > 2000) or np.any(np.abs(G) > 500) or np.any(np.abs(H) > 2000):
             import logging
             logger = logging.getLogger(__name__)
             logger.warning("Potential unit mismatch: extreme values detected in input arrays")
-        
+
         # Calculate LE as residual
         LE = self.calculate_le_residual(rn, G, H)
-        
+
         # Calculate available energy
         available_energy = self.calculate_available_energy(rn, G)
-        
+
         # Calculate evaporative fraction
         EF = self.calculate_ef(LE, available_energy)
-        
+
         # Enhanced debugging for EF calculation
         import logging
         logger = logging.getLogger(__name__)
@@ -397,19 +394,19 @@ class LatentHeatFlux:
         logger.debug(f"EF DEBUG: available_energy range [{np.nanmin(available_energy):.2f}, {np.nanmax(available_energy):.2f}], mean={np.nanmean(available_energy):.2f}")
         logger.debug(f"EF DEBUG: H range [{np.nanmin(H):.2f}, {np.nanmax(H):.2f}], mean={np.nanmean(H):.2f}")
         logger.debug(f"EF DEBUG: raw EF range [{np.nanmin(EF):.4f}, {np.nanmax(EF):.4f}], mean={np.nanmean(EF):.4f}")
-        
+
         # Apply energy balance constraints
         if apply_constraints:
             LE = self.apply_energy_balance_constraints(LE, rn, G, H)
             # Recalculate EF after constraints
             EF = self.calculate_ef(LE, available_energy)
-        
+
         # Calculate instantaneous ET
         ET_inst = self.calculate_et_instantaneous(LE)
-        
+
         # Apply physical bounds to EF
         EF = np.clip(EF, self.config.min_ef, self.config.max_ef)
-        
+
         # Optional surface temperature analysis for stress indicators
         stress_indicator = None
         if ts_kelvin is not None:
@@ -418,28 +415,28 @@ class LatentHeatFlux:
                 # Calculate temperature-based stress indicator
                 # Higher temperatures with low EF may indicate water stress
                 stress_indicator = self._calculate_temperature_stress_indicator(LE, available_energy, ts_kelvin)
-        
+
         result = {
             'LE': LE,
             'available_energy': available_energy,
             'EF': EF,
             'ET_inst': ET_inst
         }
-        
+
         if stress_indicator is not None:
             result['stress_indicator'] = stress_indicator
-            
+
         return result
-    
+
     def calculate_full(
         self,
         rn: np.ndarray,
         G: np.ndarray,
         H: np.ndarray,
-        ts_kelvin: Optional[np.ndarray] = None,
-        eto: Optional[np.ndarray] = None,
-        etr: Optional[np.ndarray] = None
-    ) -> Dict[str, np.ndarray]:
+        ts_kelvin: np.ndarray | None = None,
+        eto: np.ndarray | None = None,
+        etr: np.ndarray | None = None
+    ) -> dict[str, np.ndarray]:
         """
         Calculate latent heat flux with full quality checks and ET fractions.
         
@@ -456,11 +453,11 @@ class LatentHeatFlux:
         """
         # Basic calculation
         result = self.calculate(rn, G, H, ts_kelvin)
-        
+
         # Quality check
         quality = self.quality_check(result['LE'], rn, G, H)
         result.update(quality)
-        
+
         # Calculate ET fractions if reference ET available
         if eto is not None or etr is not None:
             et_fractions = self.calculate_et_fraction(
@@ -469,9 +466,9 @@ class LatentHeatFlux:
                 etr if etr is not None else np.zeros_like(result['LE'])
             )
             result.update(et_fractions)
-        
+
         return result
-    
+
     def compute(self, cube):
         """
         Compute latent heat flux and add to DataCube.
@@ -482,7 +479,6 @@ class LatentHeatFlux:
         Returns:
             DataCube with added LE, EF, ET_inst
         """
-        from ..core.datacube import DataCube
 
         # Get required inputs
         rn = cube.get("R_n")
@@ -506,12 +502,12 @@ class LatentHeatFlux:
 
         return cube
 
-    def __call__(self, *args, **kwargs) -> Dict[str, np.ndarray]:
+    def __call__(self, *args, **kwargs) -> dict[str, np.ndarray]:
         """
         Convenience method to calculate latent heat flux.
         """
         return self.calculate(*args, **kwargs)
-    
+
     def _calculate_temperature_stress_indicator(
         self,
         le: np.ndarray,
@@ -534,15 +530,15 @@ class LatentHeatFlux:
         """
         # Calculate evaporative fraction
         ef = self.calculate_ef(le, available_energy)
-        
+
         # Normalize temperature (assume 280-320K range for typical conditions)
         # Higher temperatures get higher stress values
         temp_stress = np.clip((ts_kelvin - 290.0) / 30.0, 0.0, 1.0)
-        
+
         # Combine temperature stress with low evaporative fraction
         # Low EF with high temperature indicates stress
         stress_indicator = temp_stress * (1.0 - np.clip(ef, 0.0, 1.0))
-        
+
         return stress_indicator
 
 

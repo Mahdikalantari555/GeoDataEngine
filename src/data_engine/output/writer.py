@@ -4,35 +4,34 @@ This module provides functions for writing georeferenced output files
 including GeoTIFF, NetCDF, CSV, and JSON formats.
 """
 
-from typing import Dict, Optional, Any, Union
-import re
-import numpy as np
-import xarray as xr
-import rasterio
-from rasterio.transform import from_bounds
-import json
 import csv
+import json
+import logging
+import re
 from datetime import datetime
 from pathlib import Path
-import logging
+from typing import Any
 
+import numpy as np
+import rasterio
+import xarray as xr
 
-from data_engine.core.datacube import DataCube
 from data_engine.calibration.dt_calibration import CalibrationResult
+from data_engine.core.datacube import DataCube
 
 
 def write_geotiff(
     path: str,
-    data: Union[np.ndarray, xr.DataArray],
+    data: np.ndarray | xr.DataArray,
     cube: DataCube,
     compression: str = "LZW",
     nodata: float = np.nan,
-    dtype: Optional[str] = None
+    dtype: str | None = None
 ) -> None:
     """Write single-band GeoTIFF with CRS and transform from DataCube."""
     if isinstance(data, xr.DataArray):
         data = data.values
-    
+
     nodata_value = nodata
     if np.issubdtype(dtype, np.integer) if dtype else False:
         data = np.where(np.isnan(data), 0, data)
@@ -40,15 +39,15 @@ def write_geotiff(
 
     if dtype is None:
         dtype = 'float32' if data.dtype in [np.float32, np.float64] else data.dtype
-    
+
     crs = cube.crs
     transform = cube.transform
-    
+
     if crs is None or transform is None:
         raise ValueError("DataCube must have CRS and transform set")
-    
+
     height, width = data.shape
-    
+
     with rasterio.open(
         path, 'w', driver='GTiff', height=height, width=width, count=1,
         dtype=dtype, crs=crs, transform=transform, compress=compression, nodata=nodata_value
@@ -73,15 +72,15 @@ def write_rgb_geotiff(
     """Write 3-band RGB GeoTIFF with CRS and transform from DataCube."""
     crs = cube.crs
     transform = cube.transform
-    
+
     if crs is None or transform is None:
         raise ValueError("DataCube must have CRS and transform set")
-    
+
     if red.shape != green.shape or red.shape != blue.shape:
         raise ValueError("All RGB bands must have the same shape")
-    
+
     height, width = red.shape
-    
+
     def stretch_band(band_data, lower_pct=2, upper_pct=98):
         valid_data = band_data[~np.isnan(band_data)]
         if len(valid_data) == 0:
@@ -92,7 +91,7 @@ def write_rgb_geotiff(
         stretched = np.clip((band_data - p_low) / (p_high - p_low), 0, 1)
         stretched = np.where(np.isnan(band_data), 0, stretched)
         return (stretched * 255).astype(np.uint8)
-    
+
     with rasterio.open(
         path, 'w', driver='GTiff', height=height, width=width, count=3,
         dtype='uint8', crs=crs, transform=transform, compress=compression, photometric='RGB'
@@ -113,27 +112,27 @@ def write_rgb_geotiff(
 
 def write_multiband_geotiff(
     path: str,
-    bands_dict: Dict[str, np.ndarray],
+    bands_dict: dict[str, np.ndarray],
     cube: DataCube,
     compression: str = "LZW"
 ) -> None:
     """Write multi-band GeoTIFF with all ET products."""
     dtypes = [arr.dtype for arr in bands_dict.values()]
     dtype = 'float32' if any(dt == np.float64 for dt in dtypes) else (dtypes[0] if dtypes else 'float32')
-    
+
     crs = cube.crs
     transform = cube.transform
-    
+
     if crs is None or transform is None:
         raise ValueError("DataCube must have CRS and transform set")
-    
+
     shapes = [arr.shape for arr in bands_dict.values()]
     if len(set(shapes)) > 1:
         raise ValueError("All bands must have the same shape")
-    
+
     height, width = shapes[0]
     count = len(bands_dict)
-    
+
     with rasterio.open(
         path, 'w', driver='GTiff', height=height, width=width, count=count,
         dtype=dtype, crs=crs, transform=transform, compress=compression
@@ -152,13 +151,13 @@ def write_multiband_geotiff(
 def write_netcdf(
     path: str,
     cube: DataCube,
-    variables: Optional[Dict[str, xr.DataArray]] = None
+    variables: dict[str, xr.DataArray] | None = None
 ) -> None:
     """Write DataCube to NetCDF with CF compliance."""
     import xarray as xr
-    
+
     ds = xr.Dataset()
-    
+
     for name, data in cube.data.items():
         ds[name] = data
         ds[name].attrs.update({
@@ -166,11 +165,11 @@ def write_netcdf(
             'long_name': cube.metadata.get(f'{name}_long_name', name),
             'standard_name': cube.metadata.get(f'{name}_standard_name', None)
         })
-    
+
     if variables:
         for name, data in variables.items():
             ds[name] = data
-    
+
     if cube.transform is not None:
         transform = cube.transform
         if hasattr(transform, 'a'):
@@ -180,7 +179,7 @@ def write_netcdf(
             ds.attrs['transform_d'] = transform.d
             ds.attrs['transform_e'] = transform.e
             ds.attrs['transform_f'] = transform.f
-    
+
     ds.attrs.update({
         'title': 'METRIC Evapotranspiration Data',
         'institution': 'METRIC Remote Sensing',
@@ -189,12 +188,12 @@ def write_netcdf(
         'references': 'METRIC model for evapotranspiration estimation',
         'Conventions': 'CF-1.8'
     })
-    
+
     ds.to_netcdf(path)
     ds.close()
 
 
-def write_statistics_csv(path: str, stats_dict: Dict[str, Any]) -> None:
+def write_statistics_csv(path: str, stats_dict: dict[str, Any]) -> None:
     """Write summary statistics to CSV."""
     with open(path, 'w', newline='') as f:
         writer = csv.writer(f)
@@ -208,7 +207,7 @@ def write_statistics_csv(path: str, stats_dict: Dict[str, Any]) -> None:
 def _convert_to_serializable(value):
     """Convert values to JSON-serializable types."""
     import xarray as xr
-    
+
     if value is None or isinstance(value, (bool, int, float, str)):
         return value
     if isinstance(value, (list, tuple)):
@@ -231,9 +230,9 @@ def write_metadata(
     path: str,
     cube: DataCube,
     calibration: CalibrationResult,
-    input_files: Optional[Dict[str, str]] = None,
-    processing_params: Optional[Dict[str, Any]] = None,
-    quality_info: Optional[Dict[str, Any]] = None
+    input_files: dict[str, str] | None = None,
+    processing_params: dict[str, Any] | None = None,
+    quality_info: dict[str, Any] | None = None
 ) -> None:
     """Write processing metadata to JSON."""
     def _to_float(val):
@@ -242,10 +241,10 @@ def write_metadata(
         if isinstance(val, (int, float, np.integer, np.floating)):
             return None if np.isnan(val) else float(val)
         return None
-    
+
     extent = cube.extent
     extent_serializable = _convert_to_serializable(extent) if extent is not None else None
-    
+
     metadata = {
         'scene_id': _convert_to_serializable(cube.metadata.get('scene_id', 'Unknown')),
         'acquisition_time': cube.acquisition_time.isoformat() if cube.acquisition_time else None,
@@ -330,14 +329,14 @@ def write_metadata(
             'version': '1.0.0'
         }
     }
-    
+
     with open(path, 'w') as f:
         json.dump(metadata, f, indent=2)
 
 
 class OutputWriter:
     """Main output writer class for METRIC ETa pipeline."""
-    
+
     DEFAULT_PRODUCTS = {
         'required': [
             ('ETaDaily', 'ET_daily', 'float32'),
@@ -372,14 +371,14 @@ class OutputWriter:
             ('RGB', 'red', 'uint8'),  # RGB is created separately via write_rgb_image
         ]
     }
-    
+
     def __init__(
         self,
         output_dir: str = ".",
         compression: str = "LZW",
         nodata: float = np.nan,
-        output_products: Optional[list] = None,
-        output_categories: Optional[list] = None,
+        output_products: list | None = None,
+        output_categories: list | None = None,
         aoi_name: str = "AOI"
     ):
         self.output_dir = Path(output_dir)
@@ -399,7 +398,7 @@ class OutputWriter:
             self._output_products = get_output_products(["et_core", "energy_balance", "surface_props"])
 
         self.output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     def _make_filename(
         self,
         product: str,
@@ -408,26 +407,26 @@ class OutputWriter:
         extension: str
     ) -> Path:
         """Generate output filename: {PRODUCT}_{PLATFORM}_{SENSOR}_{LEVEL}_{RESOLUTION}_{SCENEID}_{DATE}_{AOI}.{extension}"""
-        import re
         import logging
+        import re
         logger = logging.getLogger(__name__)
-        
+
         metadata = cube.metadata
-        
+
         # Get platform (e.g., 'S2', 'S2A', 'S2B', 'landsat-8', 'landsat-9')
         platform_raw = metadata.get('platform', 'unknown')
         platform = self._extract_platform(platform_raw)
-        
+
         # Get sensor (e.g., 'MSI', 'OLI_TIRS')
         sensor = metadata.get('sensor', 'unknown')
-        
+
         # Get processing level (e.g., 'L2A', 'L1C', 'L1GT')
         # LandsatReader maps landsat_correction -> metadata['correction']; also check processing_level
         level = metadata.get('processing_level') or metadata.get('correction', 'unknown')
-        
+
         # Get resolution (e.g., '10', '20', '30')
         resolution = metadata.get('resolution', 'unknown')
-        
+
         # Get scene_id (Landsat: landsat:scene_id; fallback to path_row as SCENEID)
         scene_id_raw = metadata.get('scene_id', 'unknown')
         path = metadata.get('path')
@@ -439,7 +438,7 @@ class OutputWriter:
         else:
             # Extract scene ID (numeric part like '454' from Sentinel scene IDs)
             sceneid = self._extract_sceneid(scene_id_raw)
-        
+
         # Get date from cube.acquisition_time (most reliable)
         date_clean = 'unknown'
         if cube.acquisition_time:
@@ -448,7 +447,7 @@ class OutputWriter:
                 logger.debug("_make_filename: date from acquisition_time='%s'", date_clean)
             except Exception as e:
                 logger.warning("_make_filename: Failed to get date: %s", e)
-        
+
         # Fallback: extract date from scene_id_raw
         if date_clean == 'unknown':
             date_match = re.search(r'(\d{4}-\d{2}-\d{2}|\d{8})', scene_id_raw)
@@ -460,16 +459,16 @@ class OutputWriter:
                 else:
                     date_clean = date_str
                 logger.debug("_make_filename: date from scene_id='%s'", date_clean)
-        
+
         logger.debug("_make_filename: date_clean='%s'", date_clean)
-        
+
         aoi = self._aoi_name
         filename = f"{product}_{platform}_{level}_{sceneid}_{date_clean}_{aoi}.{extension}"
-        
+
         logger.debug("_make_filename: Generated '%s'", filename)
-        
+
         return self.output_dir / filename
-    
+
     def _extract_platform(self, platform_raw: str) -> str:
         """Extract platform code from platform string.
         
@@ -481,12 +480,12 @@ class OutputWriter:
         """
         import logging
         logger = logging.getLogger(__name__)
-        
+
         if not platform_raw or platform_raw == 'unknown':
             return 'unknown'
-        
+
         platform_str = str(platform_raw).lower().strip()
-        
+
         # Sentinel-2 variants
         if 'sentinel-2' in platform_str or 'sentinel2' in platform_str or platform_str.startswith('s2'):
             if 's2a' in platform_str or 'sentinel-2a' in platform_str:
@@ -495,7 +494,7 @@ class OutputWriter:
                 return 'S2B'
             else:
                 return 'S2'
-        
+
         # Landsat variants
         elif 'landsat-9' in platform_str or 'landsat9' in platform_str or platform_str.endswith('9'):
             return 'L9'
@@ -511,7 +510,7 @@ class OutputWriter:
             if match:
                 return match.group(1)[:4]
             return str(platform_raw)[:4] if len(str(platform_raw)) >= 4 else str(platform_raw)
-    
+
     def _extract_sceneid(self, scene_id_raw: str) -> str:
         """Extract scene ID (numeric identifier) from scene ID string.
         
@@ -523,45 +522,45 @@ class OutputWriter:
         """
         import logging
         logger = logging.getLogger(__name__)
-        
+
         if not scene_id_raw or scene_id_raw == 'unknown':
             return 'unknown'
-        
+
         scene_id_str = str(scene_id_raw)
-        
+
         # For Sentinel: extract the numeric part (e.g., '454' from scene ID)
         # Sentinel scene IDs often contain a unique numeric identifier
         match = re.search(r'[_-]([\d]{3,})[_-]', scene_id_str)
         if match:
             return match.group(1)
-        
+
         # For Landsat: extract path-row (e.g., '170034' from 'LC08_170034_20220205')
         match = re.search(r'[_-]([\d]{6})[_-]', scene_id_str)
         if match:
             return match.group(1)
-        
+
         # Fallback: try to find any 3+ digit number
         match = re.search(r'([\d]{3,})', scene_id_str)
         if match:
             return match.group(1)
-        
+
         return 'unknown'
-    
+
     def write_et_products(
         self,
         cube: DataCube,
         scene_id: str,
         date: str,
-        calibration: Optional[CalibrationResult] = None,
-        products: Optional[list] = None
-    ) -> Dict[str, str]:
+        calibration: CalibrationResult | None = None,
+        products: list | None = None
+    ) -> dict[str, str]:
         """Write ET products to GeoTIFF files."""
         import logging
         logger = logging.getLogger(__name__)
-        
+
         output_files = {}
         product_list = products if products is not None else self._output_products
-        
+
         for product_name, band_name, dtype in product_list:
             if band_name in cube.data:
                 filepath = self._make_filename(product_name, cube, date, 'tif')
@@ -574,21 +573,21 @@ class OutputWriter:
                 logger.info(f"write_et_products: Written {product_name} to {filepath}")
             else:
                 logger.warning(f"write_et_products: Band '{band_name}' not found. Skipping {product_name}.")
-        
+
         return output_files
-    
+
     def write_custom_products(
         self,
         cube: DataCube,
         scene_id: str,
         date: str,
         products: list
-    ) -> Dict[str, str]:
+    ) -> dict[str, str]:
         return self.write_et_products(cube, scene_id, date, products=products)
-    
+
     write_et_products_csv = write_statistics_csv
-    
-    def compute_statistics(self, cube: DataCube) -> Dict[str, Any]:
+
+    def compute_statistics(self, cube: DataCube) -> dict[str, Any]:
         stats = {}
         for band_name in ['ET_daily', 'ET_inst', 'ETrF', 'LE']:
             if band_name in cube.data:
@@ -610,22 +609,22 @@ class OutputWriter:
         write_statistics_csv(str(filepath), stats)
         self.output_files.append(filepath)
         return str(filepath)
-    
+
     def write_metadata_file(
         self,
         cube: DataCube,
         calibration: CalibrationResult,
         scene_id: str,
         date: str,
-        input_files: Optional[Dict[str, str]] = None,
-        processing_params: Optional[Dict[str, Any]] = None,
-        quality_info: Optional[Dict[str, Any]] = None
+        input_files: dict[str, str] | None = None,
+        processing_params: dict[str, Any] | None = None,
+        quality_info: dict[str, Any] | None = None
     ) -> str:
         filepath = self._make_filename('metadata', cube, date, 'json')
         write_metadata(str(filepath), cube, calibration, input_files, processing_params, quality_info)
         self.output_files.append(filepath)
         return str(filepath)
-    
+
     def write_multiband_product(
         self,
         cube: DataCube,
@@ -641,22 +640,22 @@ class OutputWriter:
         write_multiband_geotiff(str(filepath), bands_dict, cube, self.compression)
         self.output_files.append(filepath)
         return str(filepath)
-    
+
     def write_netcdf_output(
         self,
         cube: DataCube,
         scene_id: str,
         date: str,
-        variables: Optional[Dict[str, xr.DataArray]] = None
+        variables: dict[str, xr.DataArray] | None = None
     ) -> str:
         filepath = self._make_filename(f'{scene_id}_ET', cube, date, 'nc')
         write_netcdf(str(filepath), cube, variables)
         self.output_files.append(filepath)
         return str(filepath)
-    
+
     def get_output_files(self) -> list:
         return self.output_files
-    
+
     def write_rgb_image(
         self,
         cube: DataCube,
@@ -665,16 +664,16 @@ class OutputWriter:
         red_band: str = 'red',
         green_band: str = 'green',
         blue_band: str = 'blue'
-    ) -> Optional[str]:
+    ) -> str | None:
         red_data = cube.data.get(red_band)
         green_data = cube.data.get(green_band)
         blue_data = cube.data.get(blue_band)
-        
+
         if red_data is None or green_data is None or blue_data is None:
             logger = logging.getLogger(__name__)
             logger.warning(f"RGB bands not available. Requested: {red_band}, {green_band}, {blue_band}")
             return None
-        
+
         filepath = self._make_filename('RGB', cube, date, 'tif')
         write_rgb_geotiff(
             str(filepath),
@@ -694,34 +693,34 @@ def write_product_metadata_geojson(
     cube: DataCube,
     aoi_id: str = "AOI",
     masked_pixels_count: int = 0,
-    cloud_cover_percent: Optional[float] = None,
+    cloud_cover_percent: float | None = None,
     theoretical_range: tuple = (-1, 1)
 ) -> None:
     """Write product metadata to GeoJSON format."""
     valid_data = data[~np.isnan(data)]
-    
+
     min_val = float(np.nanmin(valid_data)) if len(valid_data) > 0 else np.nan
     max_val = float(np.nanmax(valid_data)) if len(valid_data) > 0 else np.nan
     mean_val = float(np.nanmean(valid_data)) if len(valid_data) > 0 else np.nan
-    
+
     resolution_m = 30.0
     if cube.transform is not None:
         transform = cube.transform
         resolution_m = abs(transform.a) if hasattr(transform, 'a') else abs(transform[0])
-    
+
     projection = str(cube.crs) if cube.crs else "EPSG:4326"
-    
+
     acquisition_date = cube.acquisition_time.strftime("%Y-%m-%d") if cube.acquisition_time else datetime.now().strftime("%Y-%m-%d")
-    
+
     scene_id_raw = cube.metadata.get('scene_id', 'Unknown')
     scene_id_short = scene_id_raw.split('_')[0] if '_' in scene_id_raw else (scene_id_raw[:6] if len(scene_id_raw) >= 6 else scene_id_raw)
-    
+
     platform_raw = cube.metadata.get('platform', None)
     sensor_raw = cube.metadata.get('sensor', None)
-    
+
     platform = str(platform_raw).lower().replace(' ', '-') if platform_raw else None
     sensor = str(sensor_raw).lower().replace(' ', '_') if sensor_raw else None
-    
+
     geojson = {
         "type": "FeatureCollection",
         "features": [{
@@ -746,14 +745,14 @@ def write_product_metadata_geojson(
             }
         }]
     }
-    
+
     with open(path, 'w', encoding='utf-8') as f:
         json.dump(geojson, f, indent=2)
 
 
 class ProductMetadataWriter:
     """Helper class for writing product-specific metadata GeoJSON files."""
-    
+
     PRODUCT_CONFIG = {
         'CWSI_ET': {'theoretical_range': (0, 1), 'product_key': 'cwsi_et'},
         'CWSI_LST': {'theoretical_range': (0, 1), 'product_key': 'cwsi_lst'},
@@ -765,12 +764,12 @@ class ProductMetadataWriter:
         'LST': {'theoretical_range': (250, 400), 'product_key': 'lst'},
         'Albedo': {'theoretical_range': (0, 1), 'product_key': 'albedo'}
     }
-    
+
     def __init__(self, output_dir: str = ".", aoi_name: str = "AOI"):
         self.output_dir = Path(output_dir)
         self.aoi_name = aoi_name
         self.output_dir.mkdir(parents=True, exist_ok=True)
-    
+
     def _extract_platform(self, platform_raw: str) -> str:
         """Extract platform code from platform string.
         
@@ -780,15 +779,15 @@ class ProductMetadataWriter:
         Returns:
             Platform code (e.g., 'S2', 'S2A', 'S2B', 'L8', 'L9')
         """
-        import re
         import logging
+        import re
         logger = logging.getLogger(__name__)
-        
+
         if not platform_raw or platform_raw == 'unknown':
             return 'unknown'
-        
+
         platform_str = str(platform_raw).lower().strip()
-        
+
         # Sentinel-2 variants
         if 'sentinel-2' in platform_str or 'sentinel2' in platform_str or platform_str.startswith('s2'):
             if 's2a' in platform_str or 'sentinel-2a' in platform_str:
@@ -797,7 +796,7 @@ class ProductMetadataWriter:
                 return 'S2B'
             else:
                 return 'S2'
-        
+
         # Landsat variants
         elif 'landsat-9' in platform_str or 'landsat9' in platform_str or platform_str.endswith('9'):
             return 'L9'
@@ -813,7 +812,7 @@ class ProductMetadataWriter:
             if match:
                 return match.group(1)[:4]
             return str(platform_raw)[:4] if len(str(platform_raw)) >= 4 else str(platform_raw)
-    
+
     def _extract_sceneid(self, scene_id_raw: str) -> str:
         """Extract scene ID (numeric identifier) from scene ID string.
         
@@ -823,66 +822,66 @@ class ProductMetadataWriter:
         Returns:
             Scene ID (e.g., '454' for Sentinel, 'LC08_170034_20220205' -> '170034')
         """
-        import re
         import logging
+        import re
         logger = logging.getLogger(__name__)
-        
+
         if not scene_id_raw or scene_id_raw == 'unknown':
             return 'unknown'
-        
+
         scene_id_str = str(scene_id_raw)
-        
+
         # For Sentinel: extract the numeric part (e.g., '454' from scene ID)
         # Sentinel scene IDs often contain a unique numeric identifier
         match = re.search(r'[_-]([\d]{3,})[_-]', scene_id_str)
         if match:
             return match.group(1)
-        
+
         # For Landsat: extract path-row (e.g., '170034' from 'LC08_170034_20220205')
         match = re.search(r'[_-]([\d]{6})[_-]', scene_id_str)
         if match:
             return match.group(1)
-        
+
         # Fallback: try to find any 3+ digit number
         match = re.search(r'([\d]{3,})', scene_id_str)
         if match:
             return match.group(1)
-        
+
         return 'unknown'
-    
+
     def _make_geojson_path(self, product: str, cube: DataCube, date: str) -> Path:
         metadata = cube.metadata
-        
+
         # Get platform
         platform_raw = metadata.get('platform', 'unknown')
         platform = self._extract_platform(platform_raw)
-        
+
         # Get processing level
         level = metadata.get('processing_level', 'unknown')
-        
+
         # Get scene ID
         scene_id_raw = metadata.get('scene_id', 'unknown')
         sceneid = self._extract_sceneid(scene_id_raw)
-        
+
         # Format date as YYYY-MM-DD if not already
         date_clean = date
         if len(date) == 8 and '-' not in date:
             date_clean = f"{date[0:4]}-{date[4:6]}-{date[6:8]}"
-        
+
         filename = f"META_{product}_{platform}_{level}_{sceneid}_{date_clean}_{self.aoi_name}.geojson"
         return self.output_dir / filename
-    
-    def write_cwsi_metadata(self, data: np.ndarray, cube: DataCube, date: str, masked_pixels_count: int = 0, cloud_cover_percent: Optional[float] = None) -> str:
+
+    def write_cwsi_metadata(self, data: np.ndarray, cube: DataCube, date: str, masked_pixels_count: int = 0, cloud_cover_percent: float | None = None) -> str:
         path = self._make_geojson_path('CWSI_ET', cube, date)
         write_product_metadata_geojson(str(path), product_name='CWSI_ET', data=data, cube=cube, aoi_id=self.aoi_name, masked_pixels_count=masked_pixels_count, cloud_cover_percent=cloud_cover_percent, theoretical_range=self.PRODUCT_CONFIG['CWSI_ET']['theoretical_range'])
         return str(path)
-    
-    def write_eta_daily_metadata(self, data: np.ndarray, cube: DataCube, date: str, masked_pixels_count: int = 0, cloud_cover_percent: Optional[float] = None) -> str:
+
+    def write_eta_daily_metadata(self, data: np.ndarray, cube: DataCube, date: str, masked_pixels_count: int = 0, cloud_cover_percent: float | None = None) -> str:
         path = self._make_geojson_path('ETa', cube, date)
         write_product_metadata_geojson(str(path), product_name='ETaDaily', data=data, cube=cube, aoi_id=self.aoi_name, masked_pixels_count=masked_pixels_count, cloud_cover_percent=cloud_cover_percent, theoretical_range=self.PRODUCT_CONFIG['ETaDaily']['theoretical_range'])
         return str(path)
-    
-    def write_custom_product_metadata(self, product_name: str, data: np.ndarray, cube: DataCube, date: str, masked_pixels_count: int = 0, cloud_cover_percent: Optional[float] = None, theoretical_range: tuple = (-1, 1)) -> str:
+
+    def write_custom_product_metadata(self, product_name: str, data: np.ndarray, cube: DataCube, date: str, masked_pixels_count: int = 0, cloud_cover_percent: float | None = None, theoretical_range: tuple = (-1, 1)) -> str:
         path = self._make_geojson_path(product_name.upper(), cube, date)
         write_product_metadata_geojson(str(path), product_name=product_name, data=data, cube=cube, aoi_id=self.aoi_name, masked_pixels_count=masked_pixels_count, cloud_cover_percent=cloud_cover_percent, theoretical_range=theoretical_range)
         return str(path)

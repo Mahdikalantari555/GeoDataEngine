@@ -4,17 +4,13 @@ METRIC ETa Pipeline CLI Interface
 Command-line interface for the METRIC evapotranspiration mapping pipeline.
 """
 
-import os
-import sys
 import json
-import click
+import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
-from functools import wraps
 
+import click
 import yaml
-import logging
 
 # Configure logger
 logging.basicConfig(
@@ -46,33 +42,33 @@ def validate_path(ctx, param, value, must_exist=False, create_if_missing=False):
     """Validate and return path."""
     if value is None:
         return None
-    
+
     path = Path(value)
-    
+
     if must_exist and not path.exists():
         raise click.BadParameter(
             f'Path does not exist: {value}',
             ctx=ctx,
             param=param
         )
-    
+
     if create_if_missing:
         path.mkdir(parents=True, exist_ok=True)
-    
+
     return path
 
 
 def validate_scene_path(ctx, param, value):
     """Validate scene directory path."""
     path = validate_path(ctx, param, value, must_exist=True)
-    
+
     # Check for required files (MTL.json or band files)
     mtl_file = path / 'MTL.json'
     if not mtl_file.exists():
         # Also check for band files
         band_extensions = ['.tif', '.tiff']
         has_bands = any(
-            f.endswith(tuple(band_extensions)) 
+            f.endswith(tuple(band_extensions))
             for f in path.iterdir()
         )
         if not has_bands:
@@ -81,33 +77,33 @@ def validate_scene_path(ctx, param, value):
                 ctx=ctx,
                 param=param
             )
-    
+
     return path
 
 
-def load_config(config_path: Optional[Path] = None) -> dict:
+def load_config(config_path: Path | None = None) -> dict:
     """Load configuration from YAML or JSON file."""
     if config_path is None:
         return {}
-    
+
     config_path = Path(config_path)
-    
+
     if not config_path.exists():
         raise click.ClickException(f'Configuration file not found: {config_path}')
-    
+
     try:
         if config_path.suffix in ['.yaml', '.yml']:
-            with open(config_path, 'r') as f:
+            with open(config_path) as f:
                 return yaml.safe_load(f) or {}
         elif config_path.suffix == '.json':
-            with open(config_path, 'r') as f:
+            with open(config_path) as f:
                 return json.load(f)
         else:
             raise click.ClickException(
                 f'Unsupported config format: {config_path.suffix}. Use .yaml or .json'
             )
     except Exception as e:
-        raise click.ClickException(f'Error loading config: {str(e)}')
+        raise click.ClickException(f'Error loading config: {e!s}')
 
 
 # ============================================================================
@@ -142,12 +138,12 @@ def cli(ctx, verbose, log_file, config):
     """
     # Store context for subcommands
     ctx.ensure_object(dict)
-    
+
     # Configure logging
     if verbose:
         logging.getLogger('data_engine').setLevel(logging.DEBUG)
         logger.debug('Verbose logging enabled')
-    
+
     if log_file:
         file_handler = logging.FileHandler(log_file)
         file_handler.setFormatter(
@@ -155,14 +151,14 @@ def cli(ctx, verbose, log_file, config):
         )
         logging.getLogger('data_engine').addHandler(file_handler)
         logger.info(f'Logging to file: {log_file}')
-    
+
     # Load configuration
     if config:
         ctx.obj['config'] = load_config(config)
         logger.debug(f'Loaded configuration from: {config}')
     else:
         ctx.obj['config'] = {}
-    
+
     ctx.obj['verbose'] = verbose
     ctx.obj['log_file'] = log_file
 
@@ -209,18 +205,18 @@ def process(ctx, input_dir, output_dir, start_date, end_date, scene,
             logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         )
         logging.getLogger('data_engine').addHandler(file_handler)
-    
+
     # Merge config with CLI args
     cfg = ctx.obj.get('config', {})
     if config:
         cfg = load_config(config)
-    
+
     # Validate and create output directory
     output_dir = validate_path(None, None, output_dir, create_if_missing=True)
-    
+
     # Find scenes to process
     scenes_to_process = []
-    
+
     if scene:
         # Find specific scene
         scene_patterns = [
@@ -241,7 +237,7 @@ def process(ctx, input_dir, output_dir, start_date, end_date, scene,
             d for d in input_dir.iterdir()
             if d.is_dir() and ('landsat' in d.name.lower() or 'lc08' in d.name.lower() or 'lt05' in d.name.lower())
         ])
-        
+
         for scene_dir in scene_dirs:
             # Extract date from scene name
             scene_date_str = None
@@ -249,26 +245,26 @@ def process(ctx, input_dir, output_dir, start_date, end_date, scene,
                 if len(part) == 8 and part.isdigit():
                     scene_date_str = part
                     break
-            
+
             if scene_date_str:
                 try:
                     scene_date = datetime.strptime(scene_date_str, '%Y%m%d')
-                    
+
                     # Filter by date range
                     if start_date and scene_date < start_date:
                         continue
                     if end_date and scene_date > end_date:
                         continue
-                    
+
                     scenes_to_process.append(scene_dir)
                 except ValueError:
                     continue
-    
+
     if not scenes_to_process:
         raise click.ClickException('No scenes found matching criteria')
-    
+
     click.echo(f'Found {len(scenes_to_process)} scene(s) to process')
-    
+
     if dry_run:
         click.echo('\nDry run - scenes that would be processed:')
         for scene_dir in scenes_to_process:
@@ -278,21 +274,21 @@ def process(ctx, input_dir, output_dir, start_date, end_date, scene,
         click.echo(f'Cloud threshold: {cloud_threshold}%')
         click.echo(f'Calibration: {calibration}')
         return
-    
+
     # Process scenes
     try:
-        from data_engine.pipeline.metric_pipeline import METRICPipeline
         from data_engine.config.settings import PipelineSettings
-        
+        from data_engine.pipeline.metric_pipeline import METRICPipeline
+
         settings = PipelineSettings(
             input_dir=str(input_dir),
             output_dir=str(output_dir),
             cloud_threshold=cloud_threshold,
             calibration_method=calibration
         )
-        
+
         pipeline = METRICPipeline(settings)
-        
+
         with click.progressbar(
             scenes_to_process,
             label='Processing scenes',
@@ -305,15 +301,15 @@ def process(ctx, input_dir, output_dir, start_date, end_date, scene,
                     result = pipeline.process_scene(scene_path)
                     click.echo(f'  [OK] Completed: {result.output_file}')
                 except Exception as e:
-                    click.echo(f'  [FAIL] Failed: {str(e)}', err=True)
+                    click.echo(f'  [FAIL] Failed: {e!s}', err=True)
                     logger.exception(f'Error processing {scene_path.name}')
-        
+
         click.echo(f'\nProcessing complete. Results saved to: {output_dir}')
-        
+
     except ImportError as e:
         click.echo(f'\nProcessing module not available: {e}')
         click.echo('Pipeline implementation pending.')
-        
+
         # Save dry run results
         run_info = {
             'input_dir': str(input_dir),
@@ -325,11 +321,11 @@ def process(ctx, input_dir, output_dir, start_date, end_date, scene,
             'calibration': calibration,
             'status': 'pending'
         }
-        
+
         info_file = output_dir / 'processing_run.json'
         with open(info_file, 'w') as f:
             json.dump(run_info, f, indent=2)
-        
+
         click.echo(f'Processing task saved to: {info_file}')
 
 
@@ -369,13 +365,13 @@ def process_scene(ctx, scene_path, output, weather, skip_calibration, dry_run, v
             logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         )
         logging.getLogger('data_engine').addHandler(file_handler)
-    
+
     # Validate scene path
     scene_path = validate_scene_path(None, None, scene_path)
-    
+
     # Create output directory
     output = validate_path(None, None, output, create_if_missing=True)
-    
+
     if dry_run:
         click.echo('Dry run - scene parameters:')
         click.echo(f'  Scene: {scene_path.name}')
@@ -383,40 +379,40 @@ def process_scene(ctx, scene_path, output, weather, skip_calibration, dry_run, v
         click.echo(f'  Weather data: {weather or "default"}')
         click.echo(f'  Skip calibration: {skip_calibration}')
         return
-    
+
     # Load weather data if provided
     weather_data = None
     if weather:
         weather_data = load_config(weather)
-    
+
     try:
-        from data_engine.pipeline.metric_pipeline import METRICPipeline
         from data_engine.config.settings import PipelineSettings
-        
+        from data_engine.pipeline.metric_pipeline import METRICPipeline
+
         settings = PipelineSettings(
             input_dir=str(scene_path.parent),
             output_dir=str(output),
             skip_calibration=skip_calibration
         )
-        
+
         pipeline = METRICPipeline(settings)
-        
+
         with click.progressbar(
             ['Preprocessing', 'Radiation', 'Energy Balance', 'Calibration', 'ET Calculation'],
             label='Processing stages',
             show_percent=True
         ) as stages:
             result = pipeline.process_scene(scene_path)
-        
-        click.echo(f'\n[OK] Scene processed successfully')
+
+        click.echo('\n[OK] Scene processed successfully')
         click.echo(f'  Output file: {result.output_file}')
         if hasattr(result, 'statistics'):
             click.echo(f'  Mean ETa: {result.statistics.get("mean_eta", "N/A"):.2f} mm/day')
-            
+
     except ImportError:
         click.echo('\nScene processing module not available.')
         click.echo('Pipeline implementation pending.')
-        
+
         scene_info = {
             'scene': str(scene_path),
             'output': str(output),
@@ -424,11 +420,11 @@ def process_scene(ctx, scene_path, output, weather, skip_calibration, dry_run, v
             'skip_calibration': skip_calibration,
             'status': 'pending'
         }
-        
+
         info_file = output / 'scene_processing.json'
         with open(info_file, 'w') as f:
             json.dump(scene_info, f, indent=2)
-        
+
         click.echo(f'Processing task saved to: {info_file}')
 
 
@@ -470,23 +466,23 @@ def anchors(ctx, scene_path, output, method, cold_eta, hot_eta, interactive, ver
             logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         )
         logging.getLogger('data_engine').addHandler(file_handler)
-    
+
     # Validate scene path
     scene_path = validate_scene_path(None, None, scene_path)
-    
+
     if output is None:
         output = scene_path / 'anchors'
-    
+
     output = validate_path(None, None, output, create_if_missing=True)
-    
+
     if interactive:
         click.echo('Interactive mode requires GUI environment')
         click.echo('Falling back to automatic anchor selection...')
         method = 'auto'
-    
+
     try:
         from data_engine.calibration.anchor_pixels import AnchorPixelManager
-        
+
         manager = AnchorPixelManager(
             scene_path=scene_path,
             output_dir=output,
@@ -494,14 +490,14 @@ def anchors(ctx, scene_path, output, method, cold_eta, hot_eta, interactive, ver
             cold_etrf=cold_eta,
             hot_etrf=hot_eta
         )
-        
+
         with click.progressbar(
             ['Finding cold pixel', 'Finding hot pixel', 'Validating anchors'],
             label='Anchor selection',
             show_percent=True
         ) as steps:
             cold_pixel, hot_pixel = manager.find_anchor_pixels()
-        
+
         # Save anchor results
         anchor_results = {
             'scene': scene_path.name,
@@ -520,20 +516,20 @@ def anchors(ctx, scene_path, output, method, cold_eta, hot_eta, interactive, ver
             'dT_cold': getattr(cold_pixel, 'dT', None),
             'dT_hot': getattr(hot_pixel, 'dT', None)
         }
-        
+
         results_file = output / 'anchor_results.json'
         with open(results_file, 'w') as f:
             json.dump(anchor_results, f, indent=2)
-        
-        click.echo(f'\n[OK] Anchor pixel analysis complete')
+
+        click.echo('\n[OK] Anchor pixel analysis complete')
         click.echo(f'  Cold pixel: ({cold_pixel.x}, {cold_pixel.y})')
         click.echo(f'  Hot pixel: ({hot_pixel.x}, {hot_pixel.y})')
         click.echo(f'  Results saved to: {results_file}')
-        
+
     except ImportError:
         click.echo('Anchor pixel module not yet implemented')
         click.echo('Saving placeholder anchor configuration...')
-        
+
         anchor_config = {
             'scene': scene_path.name,
             'method': method,
@@ -541,11 +537,11 @@ def anchors(ctx, scene_path, output, method, cold_eta, hot_eta, interactive, ver
             'hot_etrf': hot_eta,
             'note': 'Placeholder - implement anchor pixel module first'
         }
-        
+
         results_file = output / 'anchor_config.json'
         with open(results_file, 'w') as f:
             json.dump(anchor_config, f, indent=2)
-        
+
         click.echo(f'  Configuration saved to: {results_file}')
 
 
@@ -587,16 +583,16 @@ def export(ctx, input_file, format, output, bands, crs, verbose, log_file):
             logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         )
         logging.getLogger('data_engine').addHandler(file_handler)
-    
+
     # Validate inputs
     input_file = validate_path(None, None, input_file, must_exist=True)
     output = validate_path(None, None, output, create_if_missing=True)
-    
+
     # Parse bands
     band_list = None
     if bands:
         band_list = [b.strip() for b in bands.split(',')]
-    
+
     click.echo(f'Exporting: {input_file.name}')
     click.echo(f'  Format: {format}')
     click.echo(f'  Output: {output}')
@@ -604,11 +600,11 @@ def export(ctx, input_file, format, output, bands, crs, verbose, log_file):
         click.echo(f'  Bands: {", ".join(band_list)}')
     if crs:
         click.echo(f'  Target CRS: {crs}')
-    
+
     # Check if export module is available
     try:
         from data_engine.io.export import export_raster
-        
+
         result = export_raster(
             input_file=str(input_file),
             output_dir=str(output),
@@ -616,13 +612,13 @@ def export(ctx, input_file, format, output, bands, crs, verbose, log_file):
             bands=band_list,
             target_crs=crs
         )
-        
+
         click.echo(f'\n[OK] Export complete: {result}')
-        
+
     except ImportError:
         click.echo('Export module not yet implemented')
         click.echo(f'Would export {input_file} to {format} format')
-        
+
         # Create placeholder
         export_info = {
             'input': str(input_file),
@@ -632,11 +628,11 @@ def export(ctx, input_file, format, output, bands, crs, verbose, log_file):
             'crs': crs,
             'status': 'pending'
         }
-        
+
         info_file = output / f'export_{input_file.stem}.json'
         with open(info_file, 'w') as f:
             json.dump(export_info, f, indent=2)
-        
+
         click.echo(f'Export task saved to: {info_file}')
 
 
@@ -679,41 +675,42 @@ def visualize(ctx, input_file, viz_type, output, title, colormap, show, verbose,
             logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         )
         logging.getLogger('data_engine').addHandler(file_handler)
-    
+
     # Validate inputs
     input_file = validate_path(None, None, input_file, must_exist=True)
-    
+
     if output is None:
         output = input_file.parent
-    
+
     output = validate_path(None, None, output, create_if_missing=True)
-    
+
     # Set default title
     if title is None:
         title = f'{input_file.stem} - {viz_type.capitalize()}'
-    
+
     click.echo(f'Creating {viz_type} visualization')
     click.echo(f'  Input: {input_file.name}')
     click.echo(f'  Title: {title}')
     click.echo(f'  Colormap: {colormap}')
-    
+
     # Check if visualization module is available
     try:
-        from data_engine.output.visualization import Visualization
-        import rasterio
         import numpy as np
-        
+        import rasterio
+
+        from data_engine.output.visualization import Visualization
+
         # Load the input file
         viz = Visualization(output_dir=str(output))
-        
+
         with rasterio.open(str(input_file)) as src:
             data = src.read(1)
             crs = src.crs
             transform = src.transform
-        
+
         # Get metadata from filename
         title = title or f'{input_file.stem}'
-        
+
         if viz_type == 'map':
             # Create ET map
             from data_engine.core.datacube import DataCube
@@ -721,16 +718,16 @@ def visualize(ctx, input_file, viz_type, output, title, colormap, show, verbose,
             cube.update_crs(crs, transform)
             cube.add('data', data)
             viz.plot_et_map(data, cube, title=title, colormap=colormap, output_path=str(output / f'{input_file.stem}_{viz_type}.png'), show=show)
-            
+
         elif viz_type == 'histogram':
             viz.plot_et_histogram(data, title=title, output_path=str(output / f'{input_file.stem}_{viz_type}.png'), show=show)
-            
+
         elif viz_type == 'timeseries':
             click.echo('Time series visualization requires multiple dates')
             click.echo('Please provide multiple input files for time series')
-            
-        click.echo(f'\n[OK] Visualization saved')
-        
+
+        click.echo('\n[OK] Visualization saved')
+
     except ImportError as e:
         click.echo(f'Visualization module error: {e}')
 
@@ -767,54 +764,54 @@ def summary(ctx, output_dir, output_json, verbose, log_file):
             logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
         )
         logging.getLogger('data_engine').addHandler(file_handler)
-    
+
     # Look for processing results
     results = {
         'scenes': [],
         'statistics': {},
         'calibration': {}
     }
-    
+
     # Find processed scene directories
     scene_dirs = [
         d for d in output_dir.iterdir()
         if d.is_dir() and d.name.startswith('ETa_')
     ]
-    
+
     for scene_dir in sorted(scene_dirs):
         scene_info = {
             'name': scene_dir.name,
             'files': [],
             'date_processed': datetime.fromtimestamp(scene_dir.stat().st_mtime).isoformat()
         }
-        
+
         # Find output files
         for f in scene_dir.glob('*'):
             if f.is_file():
                 scene_info['files'].append(f.name)
-        
+
         results['scenes'].append(scene_info)
-    
+
     # Look for calibration results
     calibration_files = list(output_dir.glob('*calibration*.json'))
     for cf in calibration_files:
         try:
-            with open(cf, 'r') as f:
+            with open(cf) as f:
                 cal_data = json.load(f)
                 results['calibration'][cf.stem] = cal_data
         except Exception:
             pass
-    
+
     # Look for statistics
     stats_files = list(output_dir.glob('*statistics*.json'))
     for sf in stats_files:
         try:
-            with open(sf, 'r') as f:
+            with open(sf) as f:
                 stats_data = json.load(f)
                 results['statistics'][sf.stem] = stats_data
         except Exception:
             pass
-    
+
     # Output summary
     if output_json:
         click.echo(json.dumps(results, indent=2))
@@ -822,10 +819,10 @@ def summary(ctx, output_dir, output_json, verbose, log_file):
         click.secho('\n============================================================', fg='cyan')
         click.secho('             METRIC ETa Pipeline Summary', fg='cyan', bold=True)
         click.secho('============================================================\n', fg='cyan')
-        
+
         click.secho(f'Output Directory: {output_dir}', fg='white', bold=True)
         click.echo()
-        
+
         if results['scenes']:
             click.secho(f'Processed Scenes ({len(results["scenes"])})', fg='green', bold=True)
             for scene in results['scenes']:
@@ -839,19 +836,19 @@ def summary(ctx, output_dir, output_json, verbose, log_file):
         else:
             click.secho('No processed scenes found', fg='yellow')
             click.echo()
-        
+
         if results['calibration']:
             click.secho('Calibration Results', fg='green', bold=True)
             for cal_name, cal_data in results['calibration'].items():
                 click.echo(f'  * {cal_name}')
             click.echo()
-        
+
         if results['statistics']:
             click.secho('Statistics', fg='green', bold=True)
             for stats_name, stats_data in results['statistics'].items():
                 click.echo(f'  * {stats_name}')
             click.echo()
-        
+
         click.secho('============================================================', fg='cyan')
 
 

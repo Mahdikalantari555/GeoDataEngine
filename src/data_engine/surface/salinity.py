@@ -36,7 +36,7 @@ class NDSI:
         return cube
 
 
-class SI_T:
+class SI_T:  # noqa: N801
     """Soil Salinity Index (geometric mean variant).
 
     Formula: SI_T = sqrt(red * swir16)

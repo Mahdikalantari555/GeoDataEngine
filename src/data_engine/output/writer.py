@@ -418,14 +418,14 @@ class OutputWriter:
         platform = self._extract_platform(platform_raw)
 
         # Get sensor (e.g., 'MSI', 'OLI_TIRS')
-        sensor = metadata.get('sensor', 'unknown')
+        metadata.get('sensor', 'unknown')
 
         # Get processing level (e.g., 'L2A', 'L1C', 'L1GT')
         # LandsatReader maps landsat_correction -> metadata['correction']; also check processing_level
         level = metadata.get('processing_level') or metadata.get('correction', 'unknown')
 
         # Get resolution (e.g., '10', '20', '30')
-        resolution = metadata.get('resolution', 'unknown')
+        metadata.get('resolution', 'unknown')
 
         # Get scene_id (Landsat: landsat:scene_id; fallback to path_row as SCENEID)
         scene_id_raw = metadata.get('scene_id', 'unknown')
@@ -471,15 +471,15 @@ class OutputWriter:
 
     def _extract_platform(self, platform_raw: str) -> str:
         """Extract platform code from platform string.
-        
+
         Args:
             platform_raw: Raw platform string from metadata
-            
+
         Returns:
             Platform code (e.g., 'S2', 'S2A', 'S2B', 'L8', 'L9')
         """
         import logging
-        logger = logging.getLogger(__name__)
+        logging.getLogger(__name__)
 
         if not platform_raw or platform_raw == 'unknown':
             return 'unknown'
@@ -513,15 +513,15 @@ class OutputWriter:
 
     def _extract_sceneid(self, scene_id_raw: str) -> str:
         """Extract scene ID (numeric identifier) from scene ID string.
-        
+
         Args:
             scene_id_raw: Raw scene ID string
-            
+
         Returns:
             Scene ID (e.g., '454' for Sentinel, 'LC08_170034_20220205' -> '170034')
         """
         import logging
-        logger = logging.getLogger(__name__)
+        logging.getLogger(__name__)
 
         if not scene_id_raw or scene_id_raw == 'unknown':
             return 'unknown'
@@ -772,16 +772,16 @@ class ProductMetadataWriter:
 
     def _extract_platform(self, platform_raw: str) -> str:
         """Extract platform code from platform string.
-        
+
         Args:
             platform_raw: Raw platform string from metadata
-            
+
         Returns:
             Platform code (e.g., 'S2', 'S2A', 'S2B', 'L8', 'L9')
         """
         import logging
         import re
-        logger = logging.getLogger(__name__)
+        logging.getLogger(__name__)
 
         if not platform_raw or platform_raw == 'unknown':
             return 'unknown'
@@ -815,16 +815,16 @@ class ProductMetadataWriter:
 
     def _extract_sceneid(self, scene_id_raw: str) -> str:
         """Extract scene ID (numeric identifier) from scene ID string.
-        
+
         Args:
             scene_id_raw: Raw scene ID string
-            
+
         Returns:
             Scene ID (e.g., '454' for Sentinel, 'LC08_170034_20220205' -> '170034')
         """
         import logging
         import re
-        logger = logging.getLogger(__name__)
+        logging.getLogger(__name__)
 
         if not scene_id_raw or scene_id_raw == 'unknown':
             return 'unknown'

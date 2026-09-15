@@ -11,23 +11,23 @@ from ..core.datacube import DataCube
 class NetRadiation:
     """
     Compute net radiation for energy balance calculations.
-    
+
     Net radiation (R_n) is the balance between incoming and outgoing
     shortwave and longwave radiation. It represents the available energy
     at the surface for partitioning into turbulent fluxes (H, LE) and
     ground heat flux (G).
-    
+
     Energy balance equation:
         R_n = R_ns - R_nl
         R_n = (1 - α) * Rs↓ - (ε * σ * Ts⁴ - ε_clear * σ * Ta⁴)
-    
+
     Where:
         R_ns = Net shortwave radiation = (1 - α) * Rs↓
         R_nl = Net longwave radiation = R_l↓ - R_l↑
-    
+
     For ET calculations, only positive (daytime) net radiation is used
     since ET does not occur at night in most conditions.
-    
+
     Attributes:
         clip_negative: Clip negative Rn values to 0 (for daytime ET)
     """
@@ -35,7 +35,7 @@ class NetRadiation:
     def __init__(self, clip_negative: bool = True):
         """
         Initialize NetRadiation calculator.
-        
+
         Args:
             clip_negative: Clip negative Rn values to 0 for daytime ET
         """
@@ -44,30 +44,30 @@ class NetRadiation:
     def compute(self, cube: DataCube) -> DataCube:
         """
         Compute net radiation and add to DataCube.
-        
+
         This method combines net shortwave and net longwave radiation
         to calculate the total net radiation balance.
-        
+
         Required inputs:
             - R_ns: Net shortwave radiation (W/m²)
             - R_nl: Net longwave radiation (W/m²)
-            
+
         Or alternatively:
             - albedo: Surface albedo
             - Rs_down: Incoming shortwave radiation
             - R_l_up: Outgoing longwave radiation
             - R_l_down: Incoming longwave radiation
-        
+
         Outputs:
             - R_n: Net radiation (W/m²)
             - R_n_daytime: Daytime net radiation (Rn ≥ 0, W/m²)
-        
+
         Args:
             cube: Input DataCube with radiation components
-            
+
         Returns:
             DataCube with added net radiation
-            
+
         Raises:
             ValueError: If required inputs are missing
         """
@@ -99,13 +99,13 @@ class NetRadiation:
     def compute_net_radiation(self, cube: DataCube) -> xr.DataArray:
         """
         Compute net radiation from basic components.
-        
+
         Computes R_n = R_ns - R_nl or equivalently:
             R_n = (1 - α) * Rs↓ - ε * σ * Ts⁴ + ε_clear * σ * Ta⁴
-        
+
         Args:
             cube: Input DataCube with albedo, Rs_down, R_l_up, R_l_down
-            
+
         Returns:
             Net radiation (W/m²)
         """
@@ -148,13 +148,13 @@ class NetRadiation:
     ) -> xr.DataArray:
         """
         Compute net radiation from net shortwave and net longwave.
-        
+
         R_n = R_ns - R_nl
-        
+
         Args:
             R_ns: Net shortwave radiation (W/m²)
             R_nl: Net longwave radiation (W/m²)
-            
+
         Returns:
             Net radiation (W/m²)
         """
@@ -175,15 +175,15 @@ class NetRadiation:
     ) -> xr.DataArray:
         """
         Compute net radiation using alternative formulation.
-        
+
         R_n = (1 - α) * Rs↓ - ε * σ * Ts⁴ + ε_clear * σ * Ta⁴
-        
+
         This formulation explicitly shows the temperature dependence
         of the longwave components.
-        
+
         Args:
             cube: Input DataCube with required components
-            
+
         Returns:
             Net radiation (W/m²)
         """
@@ -235,13 +235,13 @@ class NetRadiation:
     ) -> dict:
         """
         Compute all radiation balance components for analysis.
-        
+
         Returns a dictionary with all radiation components and their
         contributions to the net radiation balance.
-        
+
         Args:
             cube: Input DataCube with all radiation data
-            
+
         Returns:
             Dictionary of radiation components
         """
@@ -289,13 +289,13 @@ class NetRadiation:
     ) -> xr.DataArray:
         """
         Compute the effect of albedo on net shortwave radiation.
-        
+
         Shows how much radiation is reflected due to surface albedo.
-        
+
         Args:
             Rs_down: Incoming shortwave radiation (W/m²)
             albedo: Surface albedo
-            
+
         Returns:
             Reflected shortwave radiation (W/m²)
         """
@@ -331,16 +331,16 @@ class NetRadiation:
     ) -> xr.DataArray:
         """
         Compute the greenhouse effect from longwave radiation.
-        
+
         The greenhouse effect is the difference between outgoing
         longwave radiation and what would be emitted by a blackbody
         at the same temperature.
-        
+
         Args:
             R_l_up: Actual outgoing longwave radiation
             R_l_down: Incoming longwave radiation
             emissivity: Surface emissivity
-            
+
         Returns:
             Greenhouse effect dataset
         """

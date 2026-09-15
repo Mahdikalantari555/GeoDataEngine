@@ -11,19 +11,19 @@ from ..core.datacube import DataCube
 class LongwaveRadiation:
     """
     Compute longwave radiation components for energy balance.
-    
-    This class calculates incoming longwave radiation (R_l↓) from the 
-    atmosphere and outgoing longwave radiation (R_l↑) emitted by the 
+
+    This class calculates incoming longwave radiation (R_l↓) from the
+    atmosphere and outgoing longwave radiation (R_l↑) emitted by the
     surface. The net longwave radiation (R_nl) is the difference.
-    
+
     The Stefan-Boltzmann law is used for blackbody radiation:
         L = ε * σ * T⁴
-    
+
     Where:
         ε = emissivity
         σ = 5.670374419e-8 W/m²/K⁴
         T = temperature in Kelvin
-    
+
     Attributes:
         use_cloud_correction: Apply cloud cover correction to R_l↓
         use_simplified_brunt: Use simplified Brunt equation for R_l↓
@@ -36,7 +36,7 @@ class LongwaveRadiation:
     ):
         """
         Initialize LongwaveRadiation calculator.
-        
+
         Args:
             use_cloud_correction: Apply cloud cover correction
             use_simplified_brunt: Use simplified Brunt equation
@@ -47,25 +47,25 @@ class LongwaveRadiation:
     def compute(self, cube: DataCube) -> DataCube:
         """
         Compute all longwave radiation components and add to DataCube.
-        
+
         Required inputs:
             - emissivity: Surface emissivity (from emissivity module)
             - Ts (lwir11): Surface temperature in Kelvin (from thermal band)
             - Ta: Air temperature in Kelvin (from weather data)
             - e_a: Actual vapor pressure in kPa (from weather data)
             - C: Cloud cover fraction 0-1 (optional, from weather data)
-        
+
         Outputs:
             - R_l_up: Outgoing longwave radiation (W/m²)
             - R_l_down: Incoming longwave radiation (W/m²)
             - R_nl: Net longwave radiation (W/m²)
-        
+
         Args:
             cube: Input DataCube with required bands
-            
+
         Returns:
             DataCube with added longwave radiation components
-            
+
         Raises:
             ValueError: If required inputs are missing
         """
@@ -95,10 +95,10 @@ class LongwaveRadiation:
     def _validate_inputs(self, cube: DataCube) -> None:
         """
         Validate that required inputs are present in DataCube.
-        
+
         Args:
             cube: Input DataCube
-            
+
         Raises:
             ValueError: If required inputs are missing
         """
@@ -106,11 +106,9 @@ class LongwaveRadiation:
         missing = [r for r in required if r not in cube.bands()]
 
         # Check for air temperature and vapor pressure
-        if "air_temperature" not in cube.bands() and "air_temperature" not in cube.scalars():
-            # Check metadata for temperature
-            if "temperature_2m" not in cube.scalars() and "temperature_2m" not in cube.metadata:
-                # Assume Ta is available
-                pass
+        if "air_temperature" not in cube.bands() and "air_temperature" not in cube.scalars() and "temperature_2m" not in cube.scalars() and "temperature_2m" not in cube.metadata:
+            # Assume Ta is available
+            pass
 
         if "vapor_pressure" not in cube.bands() and "vapor_pressure" not in cube.scalars():
             # Assume e_a is available
@@ -195,11 +193,7 @@ class LongwaveRadiation:
         C = 0.0
         if self.use_cloud_correction:
             cloud_cover = cube.get("cloud_cover")
-            if cloud_cover is not None:
-                C = cloud_cover
-            else:
-                # Try metadata
-                C = cube.metadata.get("cloud_cover", 0.0)
+            C = cloud_cover if cloud_cover is not None else cube.metadata.get("cloud_cover", 0.0)
 
         # Compute clear-sky emissivity
         if self.use_simplified_brunt:
@@ -257,10 +251,10 @@ class LongwaveRadiation:
     def _get_vapor_pressure(self, cube: DataCube) -> xr.DataArray:
         """
         Get actual vapor pressure in kPa from DataCube.
-        
+
         Args:
             cube: Input DataCube
-            
+
         Returns:
             Actual vapor pressure in kPa
         """
@@ -300,12 +294,12 @@ class LongwaveRadiation:
     def _brunt_equation_simplified(self, e_a: xr.DataArray) -> xr.DataArray:
         """
         Compute clear-sky emissivity using simplified Brunt equation.
-        
+
         ε_clear = 0.70 + 0.005 * sqrt(e_a)
-        
+
         Args:
             e_a: Actual vapor pressure in kPa
-            
+
         Returns:
             Clear-sky emissivity
         """
@@ -319,13 +313,13 @@ class LongwaveRadiation:
     ) -> xr.DataArray:
         """
         Compute clear-sky emissivity using full Brunt equation.
-        
+
         ε_clear = 0.23 + 0.433 * sqrt(e_a) * (1 - 0.14 * C) - 0.1
-        
+
         Args:
             e_a: Actual vapor pressure in kPa
             C: Cloud cover fraction (0-1)
-            
+
         Returns:
             Clear-sky emissivity
         """
@@ -339,13 +333,13 @@ class LongwaveRadiation:
     def _compute_vapor_pressure(self, Td_celsius: float) -> float:
         """
         Compute actual vapor pressure from dewpoint temperature.
-        
+
         Uses the Magnus formula:
             e_a = 0.6108 * exp(17.27 * Td / (Td + 237.3))
-        
+
         Args:
             Td_celsius: Dewpoint temperature in °C
-            
+
         Returns:
             Actual vapor pressure in kPa
         """
@@ -354,10 +348,10 @@ class LongwaveRadiation:
     def _compute_vapor_pressure_array(self, Td: xr.DataArray) -> xr.DataArray:
         """
         Compute actual vapor pressure from dewpoint temperature (array version).
-        
+
         Args:
             Td: Dewpoint temperature in °C
-            
+
         Returns:
             Actual vapor pressure in kPa
         """
@@ -403,13 +397,13 @@ class LongwaveRadiation:
     ) -> xr.DataArray:
         """
         Compute correction factor for atmospheric downward emission.
-        
+
         Accounts for atmospheric transmittance and view factor effects
         in the longwave radiation balance.
-        
+
         Args:
             cube: Input DataCube
-            
+
         Returns:
             Atmospheric emission correction factor
         """

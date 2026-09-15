@@ -44,11 +44,11 @@ class SoilHeatFluxConfig:
 class SoilHeatFlux:
     """
     Calculate soil heat flux (G) for METRIC energy balance.
-    
+
     The soil heat flux represents the energy used to heat the soil.
     This is typically a small fraction of net radiation but can be
     significant for bare soil surfaces.
-    
+
     Attributes:
         config: Configuration parameters for G calculation
     """
@@ -56,7 +56,7 @@ class SoilHeatFlux:
     def __init__(self, config: SoilHeatFluxConfig | None = None):
         """
         Initialize SoilHeatFlux calculator.
-        
+
         Args:
             config: Optional configuration parameters. Uses defaults if not provided.
         """
@@ -101,7 +101,7 @@ class SoilHeatFlux:
     def _bastiaanssen_method(self, ndvi: np.ndarray) -> np.ndarray:
         """
         Bastiaanssen (1995) formulation for G/Rn.
-        
+
         G/Rn = 0.05 + 0.25 * NDVI (vegetated)
         G/Rn = 0.31 * (1 - NDVI) (bare soil)
         """
@@ -123,7 +123,7 @@ class SoilHeatFlux:
     def _allen_method(self, ndvi: np.ndarray) -> np.ndarray:
         """
         Allen et al. METRIC-specific formulation for G/Rn.
-        
+
         G/Rn = 0.95 - 0.19 * NDVI (dense vegetation)
         G/Rn = 0.5 * (1 - NDVI) (bare soil)
         """
@@ -150,9 +150,9 @@ class SoilHeatFlux:
     ) -> np.ndarray:
         """
         Moran et al. formulation for G/Rn.
-        
+
         G/Rn = 0.4 * (Ts - Ta) / Rn - 0.5 * NDVI
-        
+
         Note: This method requires Ts and Ta, and Rn for proper calculation.
         If Ts or Ta not provided, falls back to Bastiaanssen method.
         """

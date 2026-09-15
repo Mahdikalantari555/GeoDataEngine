@@ -33,7 +33,7 @@ import numpy as np
 class ETQualityClass(IntEnum):
     """
     METRIC ET Quality Classes.
-    
+
     Higher values indicate better quality.
     """
     UNCERTAIN = 0      # ETrF < 0 or > 1.5 - Requires review
@@ -80,16 +80,16 @@ class ETQualityConfig:
 class ETQuality:
     """
     Assess quality of ET calculations.
-    
+
     This class provides methods for:
     - Physical bounds validation
     - Spatial consistency checking
     - Quality class assignment
     - Outlier detection
-    
+
     Attributes:
         config: Configuration parameters for quality assessment
-    
+
     Example:
         >>> quality = ETQuality()
         >>> et_daily = np.array([5.0, 6.0, 7.0, 0.5, 15.0])
@@ -103,7 +103,7 @@ class ETQuality:
     ):
         """
         Initialize ETQuality assessor.
-        
+
         Args:
             config: Optional configuration parameters. Uses defaults if not provided.
         """
@@ -117,12 +117,12 @@ class ETQuality:
     ) -> dict[str, np.ndarray]:
         """
         Check if ET values are within physical bounds.
-        
+
         Args:
             et_daily: Daily ET array (mm/day)
             etrf: Optional ETrF array
             et_inst: Optional instantaneous ET array (mm/hr)
-            
+
         Returns:
             Dictionary with validation results
         """
@@ -166,11 +166,11 @@ class ETQuality:
     ) -> np.ndarray:
         """
         Assign quality class based on ETrF values.
-        
+
         Args:
             etrf: Reference ET fraction array
             et_daily: Optional daily ET for additional validation
-            
+
         Returns:
             Quality class array (0-4 scale)
         """
@@ -214,13 +214,13 @@ class ETQuality:
     ) -> dict[str, np.ndarray]:
         """
         Check spatial consistency using neighborhood statistics.
-        
+
         Pixels deviating significantly from their neighbors are flagged as outliers.
-        
+
         Args:
             et_daily: Daily ET array (mm/day)
             window_size: Window size for neighborhood (odd number)
-            
+
         Returns:
             Dictionary with spatial consistency results
         """
@@ -271,12 +271,12 @@ class ETQuality:
     ) -> dict[str, np.ndarray]:
         """
         Perform comprehensive quality assessment.
-        
+
         Args:
             et_daily: Daily ET array (mm/day)
             etrf: Reference ET fraction array
             et_inst: Optional instantaneous ET array (mm/hr)
-            
+
         Returns:
             Dictionary with complete quality assessment results
         """
@@ -330,10 +330,10 @@ class ETQuality:
     def get_quality_description(self, quality_class: int) -> str:
         """
         Get description for quality class.
-        
+
         Args:
             quality_class: Quality class value (0-4)
-            
+
         Returns:
             Description string
         """
@@ -354,12 +354,12 @@ class ETQuality:
     ) -> np.ndarray:
         """
         Flag pixels below a quality threshold.
-        
+
         Args:
             etrf: Reference ET fraction array
             et_daily: Daily ET array
             quality_threshold: Minimum acceptable quality class
-            
+
         Returns:
             Boolean array where True indicates low quality
         """
@@ -374,12 +374,12 @@ class ETQuality:
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Filter ET values to keep only high-quality pixels.
-        
+
         Args:
             et_daily: Daily ET array
             etrf: Reference ET fraction array
             quality_threshold: Minimum acceptable quality class
-            
+
         Returns:
             Tuple of (filtered_et_daily, filtered_etrf)
         """
@@ -409,7 +409,7 @@ def create_et_quality(
 ) -> ETQuality:
     """
     Factory function to create ETQuality instance.
-    
+
     Args:
         min_et: Minimum valid ET (mm/day)
         max_et: Maximum valid ET (mm/day)
@@ -417,7 +417,7 @@ def create_et_quality(
         max_etrf: Maximum valid ETrF
         outlier_threshold: Outlier deviation threshold
         **kwargs: Additional configuration parameters
-        
+
     Returns:
         Configured ETQuality instance
     """

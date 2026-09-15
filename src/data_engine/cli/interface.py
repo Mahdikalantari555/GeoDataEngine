@@ -30,12 +30,12 @@ def validate_date(ctx, param, value):
         return None
     try:
         return datetime.strptime(value, '%Y-%m-%d')
-    except ValueError:
+    except ValueError as e:
         raise click.BadParameter(
             f'Invalid date format: {value}. Use YYYY-MM-DD format.',
             ctx=ctx,
             param=param
-        )
+        ) from e
 
 
 def validate_path(ctx, param, value, must_exist=False, create_if_missing=False):
@@ -103,7 +103,7 @@ def load_config(config_path: Path | None = None) -> dict:
                 f'Unsupported config format: {config_path.suffix}. Use .yaml or .json'
             )
     except Exception as e:
-        raise click.ClickException(f'Error loading config: {e!s}')
+        raise click.ClickException(f'Error loading config: {e!s}') from e
 
 
 # ============================================================================
@@ -119,11 +119,11 @@ def load_config(config_path: Path | None = None) -> dict:
 def cli(ctx, verbose, log_file, config):
     """
     METRIC ETa Pipeline - Evapotranspiration mapping using remote sensing.
-    
+
     This tool processes satellite imagery to compute actual evapotranspiration
     using the METRIC (Mapping Evapotranspiration with Internalized Calibration)
     model.
-    
+
     \b
     Common commands:
       \b
@@ -133,7 +133,7 @@ def cli(ctx, verbose, log_file, config):
       metric export         Export results
       metric visualize      Create visualizations
       metric summary        Show processing summary
-    
+
     For help on a specific command, run: metric COMMAND --help
     """
     # Store context for subcommands
@@ -184,14 +184,14 @@ def process(ctx, input_dir, output_dir, start_date, end_date, scene,
             cloud_threshold, calibration, dry_run, config, verbose, log_file):
     """
     Process Landsat scenes for ETa estimation.
-    
+
     \b
     Examples:
       \b
       metric process -i data/ -o output/ -s 2025-09-15 -e 2025-12-04
       metric process -i data/ -o output/ --cloud-threshold 20 --dry-run
       metric process -i data/ -o output/ --scene LC08_L1TP_166038_2025_09_15
-    
+
     This command processes all scenes in the input directory (or a specific
     scene) within the specified date range and computes daily ETa using
     the METRIC model.
@@ -207,9 +207,9 @@ def process(ctx, input_dir, output_dir, start_date, end_date, scene,
         logging.getLogger('data_engine').addHandler(file_handler)
 
     # Merge config with CLI args
-    cfg = ctx.obj.get('config', {})
+    ctx.obj.get('config', {})
     if config:
-        cfg = load_config(config)
+        load_config(config)
 
     # Validate and create output directory
     output_dir = validate_path(None, None, output_dir, create_if_missing=True)
@@ -345,14 +345,14 @@ def process(ctx, input_dir, output_dir, start_date, end_date, scene,
 def process_scene(ctx, scene_path, output, weather, skip_calibration, dry_run, verbose, log_file):
     """
     Process a single Landsat scene.
-    
+
     \b
     Examples:
       \b
       metric process-scene data/landsat_20251204_166_038/ -o output/
       metric process-scene data/landsat_20251204_166_038/ -o output/ --weather weather.csv
       metric process-scene data/landsat_20251204_166_038/ -o output/ --skip-calibration
-    
+
     This command processes a single Landsat scene directory and computes
     the evapotranspiration fraction (ETf) and daily ETa.
     """
@@ -381,9 +381,8 @@ def process_scene(ctx, scene_path, output, weather, skip_calibration, dry_run, v
         return
 
     # Load weather data if provided
-    weather_data = None
     if weather:
-        weather_data = load_config(weather)
+        load_config(weather)
 
     try:
         from data_engine.config.settings import PipelineSettings
@@ -401,7 +400,7 @@ def process_scene(ctx, scene_path, output, weather, skip_calibration, dry_run, v
             ['Preprocessing', 'Radiation', 'Energy Balance', 'Calibration', 'ET Calculation'],
             label='Processing stages',
             show_percent=True
-        ) as stages:
+        ):
             result = pipeline.process_scene(scene_path)
 
         click.echo('\n[OK] Scene processed successfully')
@@ -445,14 +444,14 @@ def process_scene(ctx, scene_path, output, weather, skip_calibration, dry_run, v
 def anchors(ctx, scene_path, output, method, cold_eta, hot_eta, interactive, verbose, log_file):
     """
     Manage METRIC anchor pixels (hot and cold references).
-    
+
     \b
     Examples:
       \b
       metric anchors data/landsat_20251204_166_038/
       metric anchors data/landsat_20251204_166_038/ --method manual
       metric anchors data/landsat_20251204_166_038/ --cold-eta 1.10 --hot-eta 0.10
-    
+
     Anchor pixels are used to calibrate the METRIC model. The cold pixel
     represents a well-watered area (high ET), and the hot pixel represents
     a dry, stressed area (low ET).
@@ -495,7 +494,7 @@ def anchors(ctx, scene_path, output, method, cold_eta, hot_eta, interactive, ver
             ['Finding cold pixel', 'Finding hot pixel', 'Validating anchors'],
             label='Anchor selection',
             show_percent=True
-        ) as steps:
+        ):
             cold_pixel, hot_pixel = manager.find_anchor_pixels()
 
         # Save anchor results
@@ -561,14 +560,14 @@ def anchors(ctx, scene_path, output, method, cold_eta, hot_eta, interactive, ver
 def export(ctx, input_file, format, output, bands, crs, verbose, log_file):
     """
     Export ETa results to various formats.
-    
+
     \b
     Examples:
       \b
       metric export -i output/ETa_20251204.tif --format GeoTIFF -o output/
       metric export -i output/ETa_20251204.tif --format NetCDF -o output/
       metric export -i output/ETa_20251204.tif --format CSV --bands ET_daily,ETrF -o output/
-    
+
     Supported output formats:
       - GeoTIFF: Geo-referenced TIFF image
       - NetCDF: NetCDF4 scientific data format
@@ -653,14 +652,14 @@ def export(ctx, input_file, format, output, bands, crs, verbose, log_file):
 def visualize(ctx, input_file, viz_type, output, title, colormap, show, verbose, log_file):
     """
     Create visualizations of ETa results.
-    
+
     \b
     Examples:
       \b
       metric visualize -i output/ETa_20251204.tif --type map --output output/
       metric visualize -i output/ETa_20251204.tif --type histogram --title "ETa Distribution"
       metric visualize -i output/ETa_20251204.tif --type timeseries --colormap jet
-    
+
     Visualization types:
       - map: Geographic map of ETa values
       - histogram: Histogram of ETa distribution
@@ -695,7 +694,6 @@ def visualize(ctx, input_file, viz_type, output, title, colormap, show, verbose,
 
     # Check if visualization module is available
     try:
-        import numpy as np
         import rasterio
 
         from data_engine.output.visualization import Visualization
@@ -745,13 +743,13 @@ def visualize(ctx, input_file, viz_type, output, title, colormap, show, verbose,
 def summary(ctx, output_dir, output_json, verbose, log_file):
     """
     Show processing summary and statistics.
-    
+
     \b
     Examples:
       \b
       metric summary output/
       metric summary output/ --json
-    
+
     Displays information about processed scenes, statistics, and
     calibration results stored in the output directory.
     """
@@ -839,13 +837,13 @@ def summary(ctx, output_dir, output_json, verbose, log_file):
 
         if results['calibration']:
             click.secho('Calibration Results', fg='green', bold=True)
-            for cal_name, cal_data in results['calibration'].items():
+            for cal_name, _cal_data in results['calibration'].items():
                 click.echo(f'  * {cal_name}')
             click.echo()
 
         if results['statistics']:
             click.secho('Statistics', fg='green', bold=True)
-            for stats_name, stats_data in results['statistics'].items():
+            for stats_name, _stats_data in results['statistics'].items():
                 click.echo(f'  * {stats_name}')
             click.echo()
 

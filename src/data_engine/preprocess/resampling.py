@@ -6,6 +6,7 @@ resolutions and reprojecting to different coordinate reference systems.
 
 
 import numpy as np
+import rasterio
 import xarray as xr
 from rasterio.crs import CRS
 from rasterio.warp import calculate_default_transform, reproject
@@ -20,14 +21,14 @@ class ResamplerError(Exception):
 class Resampler:
     """
     Resampler for raster data.
-    
+
     This class handles resampling raster data to target resolutions
     and reprojecting to different coordinate reference systems.
-    
+
     Attributes:
         target_resolution: Default target resolution in meters
         target_crs: Default target CRS
-        
+
     Example:
         >>> resampler = Resampler(target_resolution=30, target_crs='EPSG:32639')
         >>> resampled = resampler.to_resolution(data, target_resolution=30)
@@ -40,7 +41,7 @@ class Resampler:
     ):
         """
         Initialize the Resampler.
-        
+
         Args:
             target_resolution: Default target resolution in meters
             target_crs: Default target CRS (e.g., 'EPSG:32639' for UTM zone 39N)
@@ -56,15 +57,15 @@ class Resampler:
     ) -> xr.DataArray | DataCube:
         """
         Resample data to a target resolution.
-        
+
         Args:
             data: Input DataArray or DataCube
             target_resolution: Target resolution in meters
             interpolation: Interpolation method ('bilinear', 'nearest', 'cubic')
-            
+
         Returns:
             Resampled data with same type as input
-            
+
         Raises:
             ResamplerError: If resampling fails
         """
@@ -96,12 +97,12 @@ class Resampler:
     ) -> xr.DataArray:
         """
         Resample a single DataArray to target resolution.
-        
+
         Args:
             data: Input DataArray
             target_resolution: Target resolution in meters
             interpolation: Interpolation method
-            
+
         Returns:
             Resampled DataArray
         """
@@ -120,8 +121,8 @@ class Resampler:
 
         # Calculate new dimensions
         height, width = data.shape
-        new_height = int(height * scale_factor)
-        new_width = int(width * scale_factor)
+        int(height * scale_factor)
+        int(width * scale_factor)
 
         # Use scipy for resampling
         try:
@@ -173,7 +174,7 @@ class Resampler:
             return result
 
         except ImportError:
-            raise ResamplerError("scipy is required for resampling")
+            raise ResamplerError("scipy is required for resampling") from None
 
     def to_crs(
         self,
@@ -183,15 +184,15 @@ class Resampler:
     ) -> xr.DataArray | DataCube:
         """
         Reproject data to a target coordinate reference system.
-        
+
         Args:
             data: Input DataArray or DataCube
             target_crs: Target CRS (e.g., 'EPSG:32639')
             interpolation: Interpolation method
-            
+
         Returns:
             Reprojected data with same type as input
-            
+
         Raises:
             ResamplerError: If reprojection fails
         """
@@ -226,12 +227,12 @@ class Resampler:
     ) -> xr.DataArray:
         """
         Reproject a single DataArray to target CRS.
-        
+
         Args:
             data: Input DataArray
             target_crs: Target CRS object
             interpolation: Interpolation method
-            
+
         Returns:
             Reprojected DataArray
         """
@@ -308,13 +309,13 @@ class Resampler:
     ) -> tuple[xr.DataArray | DataCube, xr.DataArray | DataCube]:
         """
         Align two datasets to the same grid.
-        
+
         The second dataset is resampled to match the grid of the first.
-        
+
         Args:
             data1: Reference dataset (grid to match)
             data2: Dataset to resample
-            
+
         Returns:
             Tuple of (data1, resampled_data2) with matching grids
         """
@@ -370,14 +371,14 @@ class Resampler:
     ) -> xr.DataArray:
         """
         Align data to a reference grid.
-        
+
         Args:
             data: Input DataArray
             ref_transform: Reference transform
             ref_crs: Reference CRS
             ref_height: Reference height
             ref_width: Reference width
-            
+
         Returns:
             Aligned DataArray
         """
@@ -389,7 +390,7 @@ class Resampler:
             return self._resample_to_match(data, ref_transform, ref_height, ref_width)
 
         # Reproject and match grid
-        with rasterio.io.MemoryFile() as memfile:
+        with rasterio.io.MemoryFile():
             reprojected_data = np.zeros((ref_height, ref_width), dtype=data.dtype)
 
             reproject(
@@ -432,13 +433,13 @@ class Resampler:
     ) -> xr.DataArray:
         """
         Resample data to match reference grid dimensions.
-        
+
         Args:
             data: Input DataArray
             ref_transform: Reference transform
             ref_height: Reference height
             ref_width: Reference width
-            
+
         Returns:
             Resampled DataArray
         """
@@ -476,7 +477,7 @@ class Resampler:
             )
 
         except ImportError:
-            raise ResamplerError("scipy is required for resampling")
+            raise ResamplerError("scipy is required for resampling") from None
 
     def _crop_or_pad(
         self,
@@ -486,12 +487,12 @@ class Resampler:
     ) -> np.ndarray:
         """
         Crop or pad data to target dimensions.
-        
+
         Args:
             data: Input array
             target_height: Target height
             target_width: Target width
-            
+
         Returns:
             Cropped or padded array
         """
@@ -509,7 +510,7 @@ class Resampler:
         result_y_start = max(0, (target_height - height) // 2)
         result_x_start = max(0, (target_width - width) // 2)
 
-        result_slice = result[
+        result[
             result_y_start:result_y_start + (y_end - y_start),
             result_x_start:result_x_start + (x_end - x_start)
         ]
@@ -526,10 +527,10 @@ class Resampler:
     def _get_resampling_method(self, interpolation: str):
         """
         Get rasterio resampling method from interpolation string.
-        
+
         Args:
             interpolation: Interpolation method name
-            
+
         Returns:
             rasterio resampling enum value
         """
@@ -555,12 +556,12 @@ def resample_to_resolution(
 ) -> xr.DataArray | DataCube:
     """
     Convenience function to resample data to target resolution.
-    
+
     Args:
         data: Input DataArray or DataCube
         target_resolution: Target resolution in meters
         interpolation: Interpolation method
-        
+
     Returns:
         Resampled data
     """

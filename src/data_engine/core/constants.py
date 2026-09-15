@@ -35,10 +35,10 @@ LATENT_HEAT_VAPORIZATION = 2.45e6
 def latent_heat_vaporization(temperature_k: float) -> float:
     """
     Calculate latent heat of vaporization as a function of temperature.
-    
+
     Args:
         temperature_k: Air temperature in Kelvin
-        
+
     Returns:
         Latent heat of vaporization in J/kg
     """

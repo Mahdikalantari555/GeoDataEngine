@@ -1,23 +1,20 @@
 """Unit tests for PlanetaryComputerLandsatFetcher."""
+# ruff: noqa: DTZ001  # naive datetimes intentional — matches production _normalize_dates API
+
+import json
+from datetime import datetime
+from pathlib import Path
+from unittest.mock import Mock, patch
 
 import pytest
-import json
-from datetime import datetime, timedelta
-from unittest.mock import Mock, patch, MagicMock
-import numpy as np
-import xarray as xr
-from pathlib import Path
-from shapely.geometry import box
-
-from data_engine.io.planetary_computer_fetcher import (
-    PlanetaryComputerLandsatFetcher,
-    NoSceneFoundError,
-    AuthenticationError,
+from data_engine.io.errors import (
     DownloadError,
-    PartialDataError,
     GeometryError,
+    NoSceneFoundError,
+    PartialDataError,
 )
-from data_engine.core.datacube import DataCube
+from data_engine.io.planetary_computer_fetcher import PlanetaryComputerLandsatFetcher
+from shapely.geometry import box
 
 
 class TestPlanetaryComputerLandsatFetcher:

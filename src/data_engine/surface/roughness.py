@@ -10,16 +10,16 @@ from ..core.datacube import DataCube
 class RoughnessCalculator:
     """
     Compute surface roughness parameters for momentum and heat transfer.
-    
+
     Surface roughness length (z0m) and displacement height (d) are
     critical parameters for computing aerodynamic resistance in
     sensible heat flux calculations.
-    
+
     Methods:
         - LAI-based roughness
         - NDVI-based roughness
         - Land cover based roughness
-    
+
     Attributes:
         z0m_min: Minimum roughness length (m)
         z0m_max: Maximum roughness length (m)
@@ -59,7 +59,7 @@ class RoughnessCalculator:
     ):
         """
         Initialize RoughnessCalculator.
-        
+
         Args:
             z0m_min: Minimum valid roughness length (m)
             z0m_max: Maximum valid roughness length (m)
@@ -72,13 +72,13 @@ class RoughnessCalculator:
     def compute(self, cube: DataCube) -> DataCube:
         """
         Compute all roughness parameters and add to DataCube.
-        
+
         Args:
             cube: Input DataCube containing LAI or NDVI
-            
+
         Returns:
             DataCube with added roughness parameters
-            
+
         Raises:
             ValueError: If required inputs are missing
         """
@@ -97,10 +97,10 @@ class RoughnessCalculator:
     def _get_nodata_mask(self, cube: DataCube) -> xr.DataArray:
         """
         Get nodata mask from available QA bands.
-        
+
         Args:
             cube: Input DataCube
-            
+
         Returns:
             Boolean DataArray where True indicates valid data
         """
@@ -142,19 +142,19 @@ class RoughnessCalculator:
     ) -> xr.DataArray:
         """
         Compute roughness length (z0m) for momentum transfer.
-        
+
         LAI-based method:
             if LAI < 1: z0m = 0.01
             else: z0m = 0.1 * (1 - exp(-0.4 * LAI))
-        
+
         NDVI-based method:
             z0m = 0.005 + 0.5 * NDVI  (clamped to 0.01-2.0 m)
-        
+
         Args:
             cube: DataCube
             lai: Pre-computed LAI (uses cube.get("lai") if not provided)
             ndvi: Pre-computed NDVI (uses cube.get("ndvi") if not provided)
-            
+
         Returns:
             Roughness length (z0m) in meters
         """
@@ -247,19 +247,19 @@ class RoughnessCalculator:
     ) -> xr.DataArray:
         """
         Compute displacement height (d).
-        
+
         Displacement height represents the level at which wind speed
         is zero due to vegetation drag. It is typically ~2/3 of
         vegetation height.
-        
+
         Approximate relationship:
             d = 0.66 * LAI * z0m
-        
+
         Args:
             cube: DataCube
             lai: Pre-computed LAI
             z0m: Pre-computed roughness length
-            
+
         Returns:
             Displacement height in meters
         """
@@ -278,10 +278,7 @@ class RoughnessCalculator:
                     raise ValueError("LAI or NDVI required for displacement height.")
 
         if z0m is None:
-            if "z0m" in cube.bands():
-                z0m = cube.get("z0m")
-            else:
-                z0m = self.compute_roughness_length(cube)
+            z0m = cube.get("z0m") if "z0m" in cube.bands() else self.compute_roughness_length(cube)
 
         # Compute displacement height
         d = 0.66 * lai * z0m
@@ -310,15 +307,15 @@ class RoughnessCalculator:
     ) -> xr.DataArray:
         """
         Compute log of roughness length for resistance calculations.
-        
+
         Used in aerodynamic resistance computation:
             ra = [ln((z - d) / z0m) * ln((z - d) / z0h)] / (k² * u)
-        
+
         Args:
             cube: DataCube
             z0m: Roughness length for momentum
             z0h: Roughness length for heat (defaults to z0m/10)
-            
+
         Returns:
             Log roughness parameter
         """
@@ -326,10 +323,7 @@ class RoughnessCalculator:
         valid_mask = self._get_nodata_mask(cube)
 
         if z0m is None:
-            if "z0m" in cube.bands():
-                z0m = cube.get("z0m")
-            else:
-                z0m = self.compute_roughness_length(cube)
+            z0m = cube.get("z0m") if "z0m" in cube.bands() else self.compute_roughness_length(cube)
 
         if z0h is None:
             # Heat roughness is typically ~1/10 of momentum roughness
@@ -357,11 +351,11 @@ class RoughnessCalculator:
     ) -> xr.DataArray:
         """
         Compute roughness length based on land cover classification.
-        
+
         Args:
             cube: DataCube
             land_cover: Land cover classification array
-            
+
         Returns:
             Roughness length in meters
         """
@@ -391,11 +385,11 @@ class RoughnessCalculator:
     ) -> dict:
         """
         Compute all aerodynamic parameters for sensible heat flux.
-        
+
         Args:
             cube: DataCube with computed roughness parameters
             z_measurement: Measurement height in meters (default: 2m)
-            
+
         Returns:
             Dictionary with aerodynamic parameters
         """

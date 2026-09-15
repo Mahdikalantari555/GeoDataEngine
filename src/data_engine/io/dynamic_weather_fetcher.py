@@ -203,17 +203,13 @@ class DynamicWeatherFetcher:
             # Handle different coordinate types (numpy arrays vs xarray DataArrays)
             if hasattr(target_lats_raw, 'values'):
                 target_lats_array = target_lats_raw.values
-                lats_is_dataarray = True
             else:
                 target_lats_array = np.array(target_lats_raw)
-                lats_is_dataarray = False
 
             if hasattr(target_lons_raw, 'values'):
                 target_lons_array = target_lons_raw.values
-                lons_is_dataarray = True
             else:
                 target_lons_array = np.array(target_lons_raw)
-                lons_is_dataarray = False
 
             logger.debug(f"Original target coords - lat range: [{target_lats_array.min()}, {target_lats_array.max()}], lon range: [{target_lons_array.min()}, {target_lons_array.max()}]")
             logger.debug(f"Target CRS: {target_crs}")
@@ -224,7 +220,7 @@ class DynamicWeatherFetcher:
                 # 1D coordinates - transform each point
                 lons_wgs84 = np.zeros_like(target_lons_array)
                 lats_wgs84 = np.zeros_like(target_lats_array)
-                for i, (x, y) in enumerate(zip(target_lons_array, target_lats_array)):
+                for i, (x, y) in enumerate(zip(target_lons_array, target_lats_array, strict=False)):
                     lons_wgs84[i], lats_wgs84[i] = transformer.transform(x, y)
                 target_lons_array = lons_wgs84
                 target_lats_array = lats_wgs84
@@ -247,7 +243,7 @@ class DynamicWeatherFetcher:
                     flat_lats = lat_grid.flatten()
                     flat_lons_wgs84 = np.zeros_like(flat_lons)
                     flat_lats_wgs84 = np.zeros_like(flat_lats)
-                    for i, (x, y) in enumerate(zip(flat_lons, flat_lats)):
+                    for i, (x, y) in enumerate(zip(flat_lons, flat_lats, strict=False)):
                         flat_lons_wgs84[i], flat_lats_wgs84[i] = transformer.transform(x, y)
                     target_lons_array = flat_lons_wgs84.reshape(lon_grid.shape)
                     target_lats_array = flat_lats_wgs84.reshape(lat_grid.shape)
@@ -257,7 +253,7 @@ class DynamicWeatherFetcher:
                     flat_lats = target_lats_array.flatten()
                     flat_lons_wgs84 = np.zeros_like(flat_lons)
                     flat_lats_wgs84 = np.zeros_like(flat_lats)
-                    for i, (x, y) in enumerate(zip(flat_lons, flat_lats)):
+                    for i, (x, y) in enumerate(zip(flat_lons, flat_lats, strict=False)):
                         flat_lons_wgs84[i], flat_lats_wgs84[i] = transformer.transform(x, y)
                     target_lons_array = flat_lons_wgs84.reshape(target_lons_array.shape)
                     target_lats_array = flat_lats_wgs84.reshape(target_lats_array.shape)
@@ -418,7 +414,7 @@ class DynamicWeatherFetcher:
         lon_grid, lat_grid = np.meshgrid(lon_points, lat_points)
 
         # Flatten to list of tuples
-        points = list(zip(lat_grid.flatten(), lon_grid.flatten()))
+        points = list(zip(lat_grid.flatten(), lon_grid.flatten(), strict=False))
 
         return points
 

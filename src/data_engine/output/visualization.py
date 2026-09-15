@@ -18,10 +18,10 @@ from data_engine.core.datacube import DataCube
 
 class Visualization:
     """Visualization class for METRIC ETa products.
-    
+
     This class provides methods for creating various visualization products
     from the METRIC processing pipeline.
-    
+
     Attributes:
         output_dir: Base output directory for visualization files
         figure_dpi: DPI for output figures
@@ -61,7 +61,7 @@ class Visualization:
         default_colormap: str = 'viridis'
     ):
         """Initialize the Visualization class.
-        
+
         Args:
             output_dir: Base output directory for visualization files
             figure_dpi: DPI for output figures
@@ -76,10 +76,10 @@ class Visualization:
 
     def _get_colormap(self, product: str) -> str:
         """Get colormap for a product.
-        
+
         Args:
             product: Product name
-            
+
         Returns:
             Colormap name
         """
@@ -87,10 +87,10 @@ class Visualization:
 
     def _get_label(self, product: str) -> str:
         """Get colorbar label for a product.
-        
+
         Args:
             product: Product name
-            
+
         Returns:
             Label string
         """
@@ -103,12 +103,12 @@ class Visualization:
         show: bool = False
     ) -> str | None:
         """Save figure to file and optionally display.
-        
+
         Args:
             fig: Matplotlib figure object
             output_path: Output file path (None to auto-generate)
             show: Whether to display the figure
-            
+
         Returns:
             Output file path if saved
         """
@@ -140,7 +140,7 @@ class Visualization:
         overlay_contours: bool = False
     ) -> str | None:
         """Create spatial ETa map.
-        
+
         Args:
             data: 2D numpy array or xarray.DataArray
             cube: DataCube containing CRS and transform information
@@ -152,7 +152,7 @@ class Visualization:
             vmin: Minimum value for color scaling
             vmax: Maximum value for color scaling
             overlay_contours: Whether to add contours
-            
+
         Returns:
             Output file path if saved
         """
@@ -228,7 +228,7 @@ class Visualization:
         error_bars: bool = False
     ) -> str | None:
         """Create ETa time series plot.
-        
+
         Args:
             et_data_list: List of ET arrays for each date
             dates: List of datetime objects
@@ -238,7 +238,7 @@ class Visualization:
             title: Plot title
             ylabel: Y-axis label
             error_bars: Whether to add error bars
-            
+
         Returns:
             Output file path if saved
         """
@@ -300,7 +300,7 @@ class Visualization:
         overlay_stats: bool = True
     ) -> str | None:
         """Create ETa distribution histogram.
-        
+
         Args:
             data: 2D numpy array or xarray.DataArray
             bins: Number of histogram bins
@@ -309,7 +309,7 @@ class Visualization:
             title: Plot title
             xlabel: X-axis label
             overlay_stats: Whether to overlay mean/median lines
-            
+
         Returns:
             Output file path if saved
         """
@@ -379,7 +379,7 @@ class Visualization:
         stacked: bool = True
     ) -> str | None:
         """Create energy balance bar chart.
-        
+
         Args:
             Rn: Net radiation array (W/m²)
             G: Soil heat flux array (W/m²)
@@ -389,7 +389,7 @@ class Visualization:
             show: Whether to display the plot
             title: Plot title
             stacked: Whether to use stacked bars
-            
+
         Returns:
             Output file path if saved
         """
@@ -421,7 +421,7 @@ class Visualization:
             LE_vals = [LE_mean]
 
             # Create stacked bars
-            bottom = np.zeros(1)
+            np.zeros(1)
             colors = ['#2E86AB', '#A23B72', '#F18F01', '#C73E1D']
             components = [('G', G_vals), ('H', H_vals), ('LE', LE_vals)]
 
@@ -451,7 +451,7 @@ class Visualization:
             ax1.set_title('Energy Components')
 
             # Add value labels on bars
-            for bar, val in zip(bars, values):
+            for bar, val in zip(bars, values, strict=False):
                 ax1.text(bar.get_x() + bar.get_width() / 2, bar.get_height() + 5,
                         f'{val:.1f}', ha='center', va='bottom', fontsize=10)
 
@@ -493,7 +493,7 @@ class Visualization:
         brightness: float = 1.0
     ) -> str | None:
         """Create true-color RGB composite.
-        
+
         Args:
             cube: DataCube containing blue, green, red bands
             output_path: Output file path
@@ -501,7 +501,7 @@ class Visualization:
             title: Plot title
             contrast_stretch: Whether to apply contrast stretching
             brightness: Brightness multiplier
-            
+
         Returns:
             Output file path if saved
         """
@@ -759,14 +759,14 @@ class Visualization:
         title: str = "Quality Mask"
     ) -> str | None:
         """Create quality mask visualization.
-        
+
         Args:
             quality_data: Quality mask array
             cube: DataCube containing metadata
             output_path: Output file path
             show: Whether to display the plot
             title: Plot title
-            
+
         Returns:
             Output file path if saved
         """

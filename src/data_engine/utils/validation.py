@@ -11,6 +11,8 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from data_engine.utils.logger import Logger
+
 # Required columns for weather data
 WEATHER_REQUIRED_COLUMNS = [
     "temperature_2m",
@@ -37,10 +39,10 @@ LANDSAT_REQUIRED_BANDS = [
 def validate_scene_path(path: str | Path) -> tuple[bool, str]:
     """
     Validate Landsat scene directory structure.
-    
+
     Args:
         path: Path to Landsat scene directory
-        
+
     Returns:
         Tuple of (is_valid, message)
     """
@@ -76,10 +78,10 @@ def validate_scene_path(path: str | Path) -> tuple[bool, str]:
 def validate_weather_data(df: pd.DataFrame) -> tuple[bool, str]:
     """
     Check weather data has all required columns.
-    
+
     Args:
         df: Weather data DataFrame
-        
+
     Returns:
         Tuple of (is_valid, message)
     """
@@ -102,15 +104,15 @@ def validate_weather_data(df: pd.DataFrame) -> tuple[bool, str]:
 def validate_calibration_params(a: float, b: float) -> tuple[bool, str]:
     """
     Validate calibration coefficients.
-    
+
     METRIC calibration typically has:
     - a > 0 (positive slope)
     - b < Ts_hot (intercept less than hot pixel temperature)
-    
+
     Args:
         a: Slope coefficient
         b: Intercept coefficient
-        
+
     Returns:
         Tuple of (is_valid, message)
     """
@@ -131,11 +133,11 @@ def validate_calibration_params(a: float, b: float) -> tuple[bool, str]:
 def check_ndvi_range(ndvi: np.ndarray, tol: float = 0.001) -> tuple[bool, str]:
     """
     Check NDVI values are within valid range [-1, 1].
-    
+
     Args:
         ndvi: NDVI array
         tol: Tolerance for boundary check
-        
+
     Returns:
         Tuple of (is_valid, message)
     """
@@ -163,11 +165,11 @@ def check_ndvi_range(ndvi: np.ndarray, tol: float = 0.001) -> tuple[bool, str]:
 def check_albedo_range(albedo: np.ndarray, tol: float = 0.01) -> tuple[bool, str]:
     """
     Check albedo values are within valid range [0, 1].
-    
+
     Args:
         albedo: Albedo array
         tol: Tolerance for boundary check
-        
+
     Returns:
         Tuple of (is_valid, message)
     """
@@ -190,12 +192,12 @@ def check_albedo_range(albedo: np.ndarray, tol: float = 0.01) -> tuple[bool, str
 def check_temperature_range(Ts: np.ndarray, min_temp: float = 250, max_temp: float = 400) -> tuple[bool, str]:
     """
     Check surface temperature values are reasonable (250-400 K).
-    
+
     Args:
         Ts: Surface temperature array in Kelvin
         min_temp: Minimum valid temperature (K)
         max_temp: Maximum valid temperature (K)
-        
+
     Returns:
         Tuple of (is_valid, message)
     """
@@ -223,11 +225,11 @@ def check_temperature_range(Ts: np.ndarray, min_temp: float = 250, max_temp: flo
 def check_et_range(ET: np.ndarray, max_et: float = 15) -> tuple[bool, str]:
     """
     Check ET values are within expected range [0, max_et] mm/day.
-    
+
     Args:
         ET: ET array in mm/day
         max_et: Maximum expected ET value
-        
+
     Returns:
         Tuple of (is_valid, message)
     """
@@ -255,12 +257,12 @@ def check_et_range(ET: np.ndarray, max_et: float = 15) -> tuple[bool, str]:
 def check_for_nodata(data: np.ndarray, nodata_value: float = np.nan, max_nodata_ratio: float = 0.1) -> tuple[bool, str]:
     """
     Check for excessive nodata values.
-    
+
     Args:
         data: Input array
         nodata_value: Value indicating no data (e.g., NaN, -9999)
         max_nodata_ratio: Maximum allowed ratio of nodata pixels
-        
+
     Returns:
         Tuple of (is_valid, message)
     """
@@ -289,11 +291,11 @@ def check_for_nodata(data: np.ndarray, nodata_value: float = np.nan, max_nodata_
 def check_cloud_coverage(cloud_mask: np.ndarray, threshold: float = 0.5) -> tuple[bool, str]:
     """
     Check if cloud coverage exceeds threshold.
-    
+
     Args:
         cloud_mask: Cloud mask array (True = cloud)
         threshold: Maximum cloud coverage ratio (default 50%)
-        
+
     Returns:
         Tuple of (is_valid, message)
     """
@@ -315,14 +317,14 @@ def check_energy_balance(Rn: np.ndarray, G: np.ndarray, H: np.ndarray, LE: np.nd
                          tolerance: float = 0.1) -> dict:
     """
     Verify energy balance closure: Rn - G = H + LE
-    
+
     Args:
         Rn: Net radiation array (W/m²)
         G: Soil heat flux array (W/m²)
         H: Sensible heat flux array (W/m²)
         LE: Latent heat flux array (W/m²)
         tolerance: Maximum residual ratio
-        
+
     Returns:
         Dictionary with energy balance metrics
     """
@@ -378,15 +380,14 @@ def check_energy_balance(Rn: np.ndarray, G: np.ndarray, H: np.ndarray, LE: np.nd
 def validate_input_data(**kwargs) -> tuple[bool, str]:
     """
     Validate all input data for METRIC pipeline.
-    
+
     Args:
         **kwargs: Input data arrays to validate
-        
+
     Returns:
         Tuple of (is_valid, message)
     """
     errors = []
-    warnings = []
 
     # Check required inputs
     required_inputs = ["ndvi", "albedo", "temperature", "net_radiation"]
@@ -421,7 +422,3 @@ def validate_input_data(**kwargs) -> tuple[bool, str]:
         return False, "; ".join(errors)
 
     return True, "All input data validated successfully"
-
-
-# Import Logger for warning messages
-from data_engine.utils.logger import Logger

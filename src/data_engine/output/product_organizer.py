@@ -94,7 +94,7 @@ METRIC_PRODUCT_PATTERNS = {
 class ProductOrganizer:
     """
     Organize METRIC ETa products into structured directories.
-    
+
     This class handles:
     - Scanning output directories for products
     - Creating product-specific subdirectories
@@ -137,7 +137,7 @@ class ProductOrganizer:
     def organize(self) -> dict[str, list[str]]:
         """
         Organize all products in the output directory.
-        
+
         Returns:
             Dictionary mapping product types to lists of organized file paths
         """
@@ -245,13 +245,13 @@ class ProductOrganizer:
     def _identify_product_type(self, filename: str) -> str | None:
         """
         Identify the product type from filename.
-        
+
         First tries plain patterns (Sentinel: RGB.tif, NDVI.tif), then
         falls back to METRIC naming convention.
-        
+
         Args:
             filename: Name of the file
-            
+
         Returns:
             Product type string or None if not recognized
         """
@@ -270,11 +270,11 @@ class ProductOrganizer:
     def _organize_product_type(self, product_type: str, files: list[Path]) -> list[str]:
         """
         Organize files for a specific product type.
-        
+
         Args:
             product_type: Type of product (e.g., 'NDVI', 'ETrF')
             files: List of file paths to organize
-            
+
         Returns:
             List of organized file paths
         """
@@ -317,7 +317,7 @@ class ProductOrganizer:
     def _create_product_metadata(self, product_file: Path, product_type: str) -> None:
         """
         Create metadata JSON for a product file.
-        
+
         Args:
             product_file: Path to the product file
             product_type: Type of product
@@ -386,7 +386,7 @@ class ProductOrganizer:
     def _create_summary_metadata(self, organized: dict[str, list[str]]) -> None:
         """
         Create summary metadata for organized products.
-        
+
         Args:
             organized: Dictionary of product type -> list of file paths
         """
@@ -418,7 +418,7 @@ class ProductOrganizer:
     def get_product_statistics(self) -> dict[str, dict]:
         """
         Get statistics for all organized products.
-        
+
         Returns:
             Dictionary mapping product types to their statistics
         """

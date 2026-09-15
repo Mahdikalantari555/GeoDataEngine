@@ -30,18 +30,18 @@ class BandNotFoundError(LandsatReaderError):
 class LandsatReader:
     """
     Reader for Landsat Collection 2 Level-2 data.
-    
+
     This class handles reading Landsat GeoTIFF bands, parsing MTL metadata,
     and creating a DataCube with properly scaled and georeferenced data.
-    
+
     Attributes:
         band_mapping: Mapping of band names to filenames
-        
+
     Example:
         >>> reader = LandsatReader()
         >>> cube = reader.load("data/landsat_20251204_166_038/")
         >>> print(cube)
-        
+
     Example with custom band mapping:
         >>> custom_mapping = {'blue': 'B02.tif', 'green': 'B03.tif', ...}
         >>> reader = LandsatReader(band_mapping=custom_mapping)
@@ -66,7 +66,7 @@ class LandsatReader:
 
     def __init__(self, band_mapping: dict[str, str] | None = None):
         """Initialize the LandsatReader with optional custom band mapping.
-        
+
         Args:
             band_mapping: Optional custom mapping of band names to filenames.
                           If None, uses default Landsat 8/9 band naming.
@@ -91,20 +91,20 @@ class LandsatReader:
         # Build instance-specific scale factors and offsets
         self.SCALE_FACTORS = {}
         self.ADD_OFFSETS = {}
-        for band_name in self.band_mapping.keys():
+        for band_name in self.band_mapping:
             self.SCALE_FACTORS[band_name] = default_scales.get(band_name, 1.0)
             self.ADD_OFFSETS[band_name] = default_offsets.get(band_name, 0.0)
 
     def load(self, scene_path: str) -> DataCube:
         """
         Load all bands from a Landsat scene folder.
-        
+
         Args:
             scene_path: Path to the Landsat scene directory
-            
+
         Returns:
             DataCube containing all bands and metadata
-            
+
         Raises:
             LandsatReaderError: If scene path doesn't exist or bands are missing
         """
@@ -211,13 +211,13 @@ class LandsatReader:
     def _read_mtl(self, mtl_path: str | Path) -> dict:
         """
         Parse MTL.json metadata file.
-        
+
         Args:
             mtl_path: Path to MTL.json file
-            
+
         Returns:
             Dictionary containing parsed metadata
-            
+
         Raises:
             MTLParseError: If JSON parsing fails
         """
@@ -284,17 +284,17 @@ class LandsatReader:
             return extracted
 
         except json.JSONDecodeError as e:
-            raise MTLParseError(f"Failed to parse MTL.json: {e}")
+            raise MTLParseError(f"Failed to parse MTL.json: {e}") from e
         except OSError as e:
-            raise MTLParseError(f"Failed to read MTL.json: {e}")
+            raise MTLParseError(f"Failed to read MTL.json: {e}") from e
 
     def _read_band(self, band_path: str | Path) -> xr.DataArray:
         """
         Read a single band GeoTIFF file.
-        
+
         Args:
             band_path: Path to the band GeoTIFF file
-            
+
         Returns:
             xarray.DataArray with the band data
         """
@@ -371,11 +371,11 @@ class LandsatReader:
     def _reproject_to_utm(self, data: xr.DataArray, target_crs: str) -> xr.DataArray:
         """
         Reproject data to a target CRS (UTM zone).
-        
+
         Args:
             data: Input DataArray
             target_crs: Target coordinate reference system (e.g., 'EPSG:32639')
-            
+
         Returns:
             Reprojected DataArray
         """
@@ -386,14 +386,14 @@ class LandsatReader:
     def get_band_path(self, scene_path: str, band_name: str) -> Path:
         """
         Get the full path to a specific band file.
-        
+
         Args:
             scene_path: Path to the scene directory
             band_name: Name of the band
-            
+
         Returns:
             Full path to the band file
-            
+
         Raises:
             BandNotFoundError: If band mapping doesn't exist
         """
@@ -405,10 +405,10 @@ class LandsatReader:
     def validate_scene(self, scene_path: str) -> tuple[bool, list]:
         """
         Validate that a scene contains all required bands.
-        
+
         Args:
             scene_path: Path to the scene directory
-            
+
         Returns:
             Tuple of (is_valid, list of missing bands)
         """
@@ -417,10 +417,8 @@ class LandsatReader:
 
         for band_name, filename in self.band_mapping.items():
             band_path = scene_path / filename
-            if not band_path.exists():
-                # Skip optional QA bands in validation
-                if band_name not in ['qa', 'qa_pixel']:
-                    missing_bands.append(band_name)
+            if not band_path.exists() and band_name not in ['qa', 'qa_pixel']:
+                missing_bands.append(band_name)
 
         return len(missing_bands) == 0, missing_bands
 
@@ -428,11 +426,11 @@ class LandsatReader:
 def read_landsat_scene(scene_path: str, band_mapping: dict[str, str] | None = None) -> DataCube:
     """
     Convenience function to load a Landsat scene.
-    
+
     Args:
         scene_path: Path to the Landsat scene directory
         band_mapping: Optional custom mapping of band names to filenames
-        
+
     Returns:
         DataCube containing all bands and metadata
     """

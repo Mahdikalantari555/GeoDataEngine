@@ -15,7 +15,7 @@ from loguru import logger
 class Logger:
     """
     Logger class for METRIC ETa pipeline.
-    
+
     Features:
     - Loguru-based logging with colored output
     - Log levels: DEBUG, INFO, WARNING, ERROR, CRITICAL
@@ -49,7 +49,7 @@ class Logger:
     ) -> None:
         """
         Initialize logger with specified configuration.
-        
+
         Args:
             name: Logger name
             log_file: Path to log file (optional)
@@ -96,10 +96,10 @@ class Logger:
     def get_logger(name: str):
         """
         Get logger instance.
-        
+
         Args:
             name: Logger name
-            
+
         Returns:
             Logger instance
         """
@@ -163,7 +163,7 @@ class Logger:
 def log_step(name: str):
     """
     Context manager for logging pipeline steps.
-    
+
     Usage:
         with log_step("Processing data"):
             # do work
@@ -181,11 +181,11 @@ def log_step(name: str):
 def get_progress_bar(total: int, desc: str = "Processing"):
     """
     Create a progress bar for loops.
-    
+
     Args:
         total: Total number of items
         desc: Description of the progress
-        
+
     Returns:
         tqdm progress bar instance
     """
@@ -196,7 +196,7 @@ def get_progress_bar(total: int, desc: str = "Processing"):
 def log_execution_time(func):
     """
     Decorator to log function execution time.
-    
+
     Usage:
         @log_execution_time
         def my_function():

@@ -10,7 +10,7 @@ Energy Balance Equation:
 Example usage:
     manager = EnergyBalanceManager()
     results = manager.calculate(cube)
-    
+
     # Access results
     G = results['G']
     H = results['H']
@@ -62,10 +62,10 @@ class EnergyBalanceConfig:
 class EnergyBalanceManager:
     """
     Unified manager for calculating energy balance components.
-    
+
     This class provides a simple interface for calculating all energy
     balance components (G, H, LE) and integrates with the DataCube.
-    
+
     Example:
         >>> manager = EnergyBalanceManager()
         >>> results = manager.calculate(cube)
@@ -77,7 +77,7 @@ class EnergyBalanceManager:
     def __init__(self, config: EnergyBalanceConfig | None = None):
         """
         Initialize EnergyBalanceManager.
-        
+
         Args:
             config: Optional configuration parameters. Uses defaults if not provided.
         """
@@ -128,7 +128,7 @@ class EnergyBalanceManager:
     ) -> dict[str, np.ndarray]:
         """
         Calculate all energy balance components from arrays.
-        
+
         Args:
             rn: Net radiation (W/m²)
             ts_kelvin: Surface temperature (K)
@@ -139,7 +139,7 @@ class EnergyBalanceManager:
             albedo: Surface albedo (optional)
             pressure_pa: Atmospheric pressure (Pa, optional)
             lai: Leaf Area Index (optional)
-            
+
         Returns:
             Dictionary containing:
                 - 'G': Soil heat flux (W/m²)
@@ -232,10 +232,10 @@ class EnergyBalanceManager:
     def calculate(self, cube: DataCube) -> dict[str, np.ndarray]:
         """
         Calculate all energy balance components from DataCube.
-        
+
         Args:
             cube: DataCube containing required data arrays
-            
+
         Required cube arrays:
             - 'R_n': Net radiation (W/m²)
             - 'lwir11': Surface temperature (K)
@@ -243,12 +243,12 @@ class EnergyBalanceManager:
             - 'wind_speed_10m': Wind speed at 10m (m/s)
             - 'z0m': Roughness length for momentum (m)
             - 'ndvi': Normalized Difference Vegetation Index
-            
+
         Optional cube arrays:
             - 'surface_pressure': Atmospheric pressure (Pa)
             - 'lai': Leaf Area Index
             - 'albedo': Surface albedo
-            
+
         Returns:
             Dictionary with energy balance arrays. Also adds arrays to cube.
         """
@@ -261,7 +261,7 @@ class EnergyBalanceManager:
             z0m = cube.get('z0m')
             ndvi = cube.get('ndvi')
         except KeyError as e:
-            raise ValueError(f"Missing required data in cube: {e}")
+            raise ValueError(f"Missing required data in cube: {e}") from e
 
         # Get optional arrays
         pressure_pa = cube.get('surface_pressure') if 'surface_pressure' in cube.bands() else None
@@ -314,13 +314,13 @@ class EnergyBalanceManager:
     ) -> dict[str, np.ndarray]:
         """
         Generate quality report for energy balance.
-        
+
         Args:
             rn: Net radiation (W/m²)
             G: Soil heat flux (W/m²)
             H: Sensible heat flux (W/m²)
             LE: Latent heat flux (W/m²)
-            
+
         Returns:
             Dictionary with quality metrics
         """
@@ -385,13 +385,13 @@ def create_energy_balance_manager(
 ) -> EnergyBalanceManager:
     """
     Factory function to create EnergyBalanceManager.
-    
+
     Args:
         g_method: Soil heat flux calculation method
         h_use_stability: Whether to use stability corrections
         dt_a: dT slope coefficient (anchor pixel calibration)
         dt_b: dT intercept coefficient (anchor pixel calibration)
-        
+
     Returns:
         Configured EnergyBalanceManager instance
     """

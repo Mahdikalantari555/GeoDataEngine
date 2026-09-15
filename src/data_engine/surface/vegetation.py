@@ -10,10 +10,10 @@ from ..core.datacube import DataCube
 class VegetationIndices:
     """
     Compute vegetation indices from satellite imagery.
-    
+
     This class provides methods for computing common vegetation indices
     used in energy balance and evapotranspiration calculations.
-    
+
     Supported indices:
         - NDVI (Normalized Difference Vegetation Index)
         - EVI (Enhanced Vegetation Index)
@@ -21,7 +21,7 @@ class VegetationIndices:
         - SAVI (Soil Adjusted Vegetation Index)
         - FVC (Fractional Vegetation Cover)
         - NDWI (Normalized Difference Water Index)
-    
+
     Attributes:
         ndvi_min: Minimum NDVI value for vegetation (default: 0.0)
         ndvi_max: Maximum NDVI value for vegetation (default: 0.8)
@@ -39,7 +39,7 @@ class VegetationIndices:
     ):
         """
         Initialize VegetationIndices calculator.
-        
+
         Args:
             ndvi_min: Minimum NDVI value for vegetation fraction calculations
             ndvi_max: Maximum NDVI value for vegetation fraction calculations
@@ -57,13 +57,13 @@ class VegetationIndices:
     def compute(self, cube: DataCube) -> DataCube:
         """
         Compute all vegetation indices and add to DataCube.
-        
+
         Args:
             cube: Input DataCube containing required bands
-            
+
         Returns:
             DataCube with added vegetation indices
-            
+
         Raises:
             ValueError: If required bands are missing
         """
@@ -105,10 +105,10 @@ class VegetationIndices:
     def _validate_inputs(self, cube: DataCube) -> None:
         """
         Validate that required input bands exist in DataCube.
-        
+
         Args:
             cube: Input DataCube to validate
-            
+
         Raises:
             ValueError: If required bands are missing
         """
@@ -165,21 +165,21 @@ class VegetationIndices:
     def compute_ndvi(self, cube: DataCube) -> xr.DataArray:
         """
         Compute Normalized Difference Vegetation Index (NDVI).
-        
+
         NDVI is a standardized index measuring vegetation health and density:
         NDVI = (NIR - Red) / (NIR + Red)
-        
+
         Values range from -1 to 1:
             - Negative values: Water or clouds
             - Near zero: Bare soil or rocks
             - Positive values: Vegetation (higher = denser)
-        
+
         Args:
             cube: DataCube containing red and nir08 bands
-            
+
         Returns:
             NDVI as dimensionless DataArray (-1 to 1)
-            
+
         Raises:
             ValueError: If red or nir08 bands are missing
         """
@@ -217,16 +217,16 @@ class VegetationIndices:
     def compute_evi(self, cube: DataCube) -> xr.DataArray:
         """
         Compute Enhanced Vegetation Index (EVI).
-        
+
         EVI is optimized for high biomass regions and improves sensitivity:
         EVI = 2.5 * (NIR - Red) / (NIR + 6*Red - 7.5*Blue + 1)
-        
+
         Args:
             cube: DataCube containing blue, red, and nir08 bands
-            
+
         Returns:
             EVI as dimensionless DataArray
-            
+
         Raises:
             ValueError: If required bands are missing
         """
@@ -267,23 +267,20 @@ class VegetationIndices:
     def compute_lai(self, cube: DataCube, ndvi: xr.DataArray | None = None) -> xr.DataArray:
         """
         Compute Leaf Area Index (LAI) from NDVI.
-        
+
         Uses either exponential or Asrar et al. relationship:
         - Exponential: LAI = 0.57 * exp(2.33 * NDVI) for 0.2 < NDVI < 0.8
         - Asrar: LAI = -ln((0.69 - NDVI)/0.59) / 0.91
-        
+
         Args:
             cube: DataCube
             ndvi: Pre-computed NDVI (uses cube.get("ndvi") if not provided)
-            
+
         Returns:
             LAI as dimensionless DataArray
         """
         if ndvi is None:
-            if "ndvi" not in cube.bands():
-                ndvi = self.compute_ndvi(cube)
-            else:
-                ndvi = cube.get("ndvi")
+            ndvi = self.compute_ndvi(cube) if "ndvi" not in cube.bands() else cube.get("ndvi")
 
         # Get nodata mask
         valid_mask = self._get_nodata_mask(cube)
@@ -328,14 +325,14 @@ class VegetationIndices:
     def compute_savi(self, cube: DataCube, ndvi: xr.DataArray | None = None) -> xr.DataArray:
         """
         Compute Soil Adjusted Vegetation Index (SAVI).
-        
+
         SAVI accounts for soil brightness effects:
         SAVI = ((NIR - Red) / (NIR + Red + L)) * (1 + L)
-        
+
         Args:
             cube: DataCube containing red and nir08 bands
             ndvi: Pre-computed NDVI (optional)
-            
+
         Returns:
             SAVI as dimensionless DataArray
         """
@@ -379,24 +376,21 @@ class VegetationIndices:
     ) -> xr.DataArray:
         """
         Compute Fractional Vegetation Cover (FVC).
-        
+
         FVC represents the proportion of ground covered by vegetation:
         FVC = ((NDVI - NDVI_min) / (NDVI_max - NDVI_min))²
-        
+
         Args:
             cube: DataCube
             ndvi: Pre-computed NDVI
             ndvi_min: Minimum NDVI for bare soil (default from init)
             ndvi_max: Maximum NDVI for full vegetation (default from init)
-            
+
         Returns:
             FVC as dimensionless DataArray [0, 1]
         """
         if ndvi is None:
-            if "ndvi" not in cube.bands():
-                ndvi = self.compute_ndvi(cube)
-            else:
-                ndvi = cube.get("ndvi")
+            ndvi = self.compute_ndvi(cube) if "ndvi" not in cube.bands() else cube.get("ndvi")
 
         if ndvi_min is None:
             ndvi_min = self.ndvi_min
@@ -428,20 +422,20 @@ class VegetationIndices:
     def compute_ndwi(self, cube: DataCube) -> xr.DataArray:
         """
         Compute Normalized Difference Water Index (NDWI).
-        
+
         NDWI is used for water body detection:
         NDWI = (Green - NIR) / (Green + NIR)
-        
+
         Values range from -1 to 1:
             - Positive values: Water (higher = clearer water)
             - Negative values: Vegetation/soil (higher = denser vegetation)
-        
+
         Args:
             cube: DataCube containing green and nir08 bands
-            
+
         Returns:
             NDWI as dimensionless DataArray (-1 to 1)
-            
+
         Raises:
             ValueError: If green or nir08 bands are missing
         """

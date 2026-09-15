@@ -142,7 +142,7 @@ class METRICPipeline:
         roi_path: str | None = None
     ) -> None:
         """Load input data into DataCube from various sources.
-        
+
         Args:
             landsat_source: Either:
                 - str: Path to local Landsat scene directory (backward compatible)
@@ -212,7 +212,7 @@ class METRICPipeline:
         roi_path: str | None
     ) -> None:
         """Load Landsat data from a local directory (original implementation).
-        
+
         Args:
             scene_path: Path to Landsat scene directory
             meteo_data: Meteorological data dictionary
@@ -336,7 +336,7 @@ class METRICPipeline:
         roi_path: str | None
     ) -> None:
         """Load Landsat data from Planetary Computer.
-        
+
         Args:
             config: Configuration dictionary with keys:
                 - roi: GeoJSON geometry dict or shapely geometry (REQUIRED)
@@ -368,8 +368,8 @@ class METRICPipeline:
         # Parse target date
         try:
             target_date = datetime.fromisoformat(target_date_str)
-        except ValueError:
-            raise ValueError(f"Invalid date format: {target_date_str}. Use YYYY-MM-DD")
+        except ValueError as e:
+            raise ValueError(f"Invalid date format: {target_date_str}. Use YYYY-MM-DD") from e
 
         # Create date range (single day, but can be expanded with fallback)
         # For now, just use the single date. Could add fallback logic later.
@@ -533,11 +533,11 @@ class METRICPipeline:
 
     def clip_to_roi(self) -> None:
         """Clip spatial scene bands to ROI boundary during preprocessing.
-        
+
         This method clips only the spatial Landsat bands (similar to cloud masking) to the ROI boundary
         early in the preprocessing workflow, ensuring all subsequent calculations
         run on the smaller, clipped dataset for computational efficiency.
-        
+
         Weather data (spatially uniform) is not clipped since it doesn't have spatial extent.
         """
         import logging
@@ -638,10 +638,10 @@ class METRICPipeline:
     def _create_roi_mask_from_clipped_data(self, sample_band) -> np.ndarray:
         """
         Create boolean mask indicating which pixels are within ROI boundaries.
-        
+
         Args:
             sample_band: Sample band data to extract coordinate information
-            
+
         Returns:
             Boolean mask array where True indicates pixels within ROI boundaries
         """
@@ -679,15 +679,15 @@ class METRICPipeline:
     def calculate_qa_coverage_enhanced(self, ndvi: xr.DataArray) -> tuple[float, int, int]:
         """
         Calculate QA coverage counting only cloud-masked pixels as loss.
-        
+
         This method counts only pixels removed by cloud masking as pixel loss,
         not clipped boundary regions. The calculation is:
         - Total pixels: All pixels in the scene
         - Valid pixels: Pixels not masked by clouds (NaN values from cloud masking)
-        
+
         Args:
             ndvi: NDVI array for QA coverage calculation
-            
+
         Returns:
             Tuple of (valid_pixel_fraction, valid_pixels, total_pixels)
             where only cloud-masked pixels count as loss
@@ -859,7 +859,7 @@ class METRICPipeline:
 
     def validate_scene(self) -> tuple[bool, str]:
         """Perform scene-level pre-validation (HARD REJECT) checks.
-        
+
         Returns:
             Tuple of (rejected: bool, reason: str)
             If rejected is True, the scene should be rejected with the given reason.
@@ -920,12 +920,12 @@ class METRICPipeline:
 
     def calculate_soil_heat_flux(self) -> None:
         """Calculate soil heat flux (G) independently of calibration.
-        
+
         G depends only on:
         - Net radiation (Rn)
         - NDVI or LAI
         - Surface temperature (Ts)
-        
+
         This method computes G BEFORE calibration so it can be used
         for anchor pixel selection (Rn-G optimization).
         """
@@ -1000,7 +1000,7 @@ class METRICPipeline:
 
     def calculate_energy_balance(self) -> None:
         """Calculate energy balance components (H and LE) with calibration.
-        
+
         Assumes Rn and G are already computed.
         Uses anchor pixel calibration from METRIC to compute H and LE.
         """
@@ -1031,7 +1031,7 @@ class METRICPipeline:
 
             # Calculate energy balance components (H and LE)
             # This will use the anchor pixel calibration set during calibrate() step
-            eb_results = self._eb_manager.calculate(self.data)
+            self._eb_manager.calculate(self.data)
 
             logger.info("Energy balance calculation completed")
 
@@ -1041,11 +1041,11 @@ class METRICPipeline:
 
     def _safe_nanmean(self, data, data_name: str) -> float:
         """Safely calculate nanmean with proper error handling and logging.
-        
+
         Args:
             data: Input data (xarray DataArray or numpy array)
             data_name: Name of the data for logging purposes
-            
+
         Returns:
             Float value of the mean, or raises ValueError if data is invalid
         """
@@ -1057,10 +1057,7 @@ class METRICPipeline:
             raise ValueError(f"{data_name} data is None")
 
         # Check if data has values attribute (xarray DataArray)
-        if hasattr(data, 'values'):
-            values = data.values
-        else:
-            values = data
+        values = data.values if hasattr(data, 'values') else data
 
         # Check for empty arrays
         if values.size == 0:
@@ -1076,10 +1073,10 @@ class METRICPipeline:
 
     def _get_air_temperature(self) -> float:
         """Get air temperature with improved spatial handling.
-        
+
         Returns:
             Air temperature in Kelvin as float
-            
+
         This method handles both spatially varying and uniform temperature data,
         with proper fallback to default values.
         """
@@ -1201,7 +1198,7 @@ class METRICPipeline:
                 self._eb_manager.set_anchor_pixel_calibration(
                     calibration.a_coefficient, calibration.b_coefficient
                 )
-                eb_results = self._eb_manager.calculate(self.data)
+                self._eb_manager.calculate(self.data)
 
             logger.info(f"Unified METRIC calibration completed with status: {calibration.status.value}")
             logger.info(f"  Pre-validation: {calibration.prevalidation_passed}")
@@ -1237,7 +1234,7 @@ class METRICPipeline:
             ndvi = self.data.get("ndvi")
             albedo = self.data.get("albedo")
             emissivity = self.data.get("emissivity")
-            lai = self.data.get("lai")
+            self.data.get("lai")
 
             if ndvi is not None:
                 valid_ndvi = ndvi.values[~np.isnan(ndvi.values)]
@@ -1254,8 +1251,8 @@ class METRICPipeline:
             # Log radiation components
             rn = self.data.get("R_n")
             rs_down = self.data.get("Rs_down")
-            rl_up = self.data.get("R_l_up")
-            rl_down = self.data.get("R_l_down")
+            self.data.get("R_l_up")
+            self.data.get("R_l_down")
 
             if rn is not None:
                 valid_rn = rn.values[~np.isnan(rn.values)]
@@ -1311,7 +1308,7 @@ class METRICPipeline:
             inst_et_calc = InstantaneousET()
 
             # Get ET0_daily for METRIC scaling
-            et0_daily_value = self._get_et0_daily()
+            self._get_et0_daily()
 
             logger.info("Step 1: Calculating instantaneous ET from energy balance")
             logger.info("Formula: ET_inst = LE / (ρ × λ) where LE is latent heat flux")
@@ -1560,7 +1557,7 @@ class METRICPipeline:
 
             # If products are plain strings, resolve to (name, band, dtype) tuples
             if products_to_use and isinstance(products_to_use[0], str):
-                from ..output.writer import OutputWriter as _OW
+                from ..output.writer import OutputWriter as _OW  # noqa: N814
                 name_lookup = {}
                 for cat in _OW.DEFAULT_PRODUCTS.values():
                     for entry in cat:
@@ -1655,7 +1652,7 @@ class METRICPipeline:
                 logger.info("Visualization disabled: skipping overview/et_map PNGs")
 
             # Save metadata
-            metadata_path = os.path.join(output_dir, "processing_metadata.json")
+            os.path.join(output_dir, "processing_metadata.json")
 
             # Build quality information from scene statistics
             quality_info = {
@@ -1710,11 +1707,11 @@ class METRICPipeline:
 
     def clip_outputs_to_aoi(self) -> None:
         """Clip final ET outputs to AOI boundary.
-        
+
         DEPRECATED: This method is no longer used since ROI clipping is now performed
         during preprocessing (Step 1.5) using clip_to_roi(). All subsequent calculations
         run on the already-clipped data, so no final output clipping is needed.
-        
+
         This method is kept for backward compatibility but is now a no-op.
         """
         import logging

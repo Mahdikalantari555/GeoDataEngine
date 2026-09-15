@@ -25,15 +25,15 @@ class TimeNotFoundError(MeteoReaderError):
 class MeteoReader:
     """
     Reader for meteorological data.
-    
+
     This class handles reading weather station data from CSV files,
     interpolating values for specific times, and providing weather
     parameters for ETa calculations.
-    
+
     Attributes:
         df: pandas DataFrame containing weather data
         columns: List of weather variable columns
-        
+
     Example:
         >>> reader = MeteoReader()
         >>> reader.load("data/weather_data.csv")
@@ -59,13 +59,13 @@ class MeteoReader:
     def load(self, csv_path: str | Path) -> 'MeteoReader':
         """
         Load weather data from CSV file.
-        
+
         Args:
             csv_path: Path to the weather data CSV file
-            
+
         Returns:
             self for method chaining
-            
+
         Raises:
             DataLoadError: If file doesn't exist or parsing fails
         """
@@ -87,24 +87,24 @@ class MeteoReader:
 
             return self
 
-        except pd.errors.EmptyDataError:
-            raise DataLoadError(f"Weather data file is empty: {csv_path}")
+        except pd.errors.EmptyDataError as e:
+            raise DataLoadError(f"Weather data file is empty: {csv_path}") from e
         except pd.errors.ParserError as e:
-            raise DataLoadError(f"Failed to parse weather data: {e}")
+            raise DataLoadError(f"Failed to parse weather data: {e}") from e
 
     def get_at_time(self, dt: datetime) -> dict[str, float]:
         """
         Get weather data at a specific time.
-        
+
         If the exact time is not in the data, performs linear interpolation
         between the nearest hourly values.
-        
+
         Args:
             dt: Datetime to query
-            
+
         Returns:
             Dictionary containing weather variables at the requested time
-            
+
         Raises:
             TimeNotFoundError: If time is outside data range
         """
@@ -116,13 +116,13 @@ class MeteoReader:
     def interpolate(self, dt: datetime) -> dict[str, float]:
         """
         Linearly interpolate weather data for a specific time.
-        
+
         Args:
             dt: Datetime to interpolate for
-            
+
         Returns:
             Dictionary with interpolated weather values
-            
+
         Raises:
             TimeNotFoundError: If time is outside data range
         """
@@ -173,10 +173,7 @@ class MeteoReader:
         total_seconds = (dt_after - dt_before).total_seconds()
         elapsed_seconds = (pd.Timestamp(dt) - dt_before).total_seconds()
 
-        if total_seconds == 0:
-            alpha = 0.0
-        else:
-            alpha = elapsed_seconds / total_seconds
+        alpha = 0.0 if total_seconds == 0 else elapsed_seconds / total_seconds
 
         # Interpolate each column
         result = {'datetime': dt}
@@ -194,7 +191,7 @@ class MeteoReader:
     def get_hourly_range(self) -> tuple:
         """
         Get the start and end times of the weather data.
-        
+
         Returns:
             Tuple of (start_time, end_time) as datetime objects
         """
@@ -206,10 +203,10 @@ class MeteoReader:
     def get_temperature_at_time(self, dt: datetime) -> float:
         """
         Get temperature at a specific time.
-        
+
         Args:
             dt: Datetime to query
-            
+
         Returns:
             Temperature in Celsius at 2m height
         """
@@ -219,10 +216,10 @@ class MeteoReader:
     def get_humidity_at_time(self, dt: datetime) -> float:
         """
         Get relative humidity at a specific time.
-        
+
         Args:
             dt: Datetime to query
-            
+
         Returns:
             Relative humidity in percentage (0-100)
         """
@@ -232,10 +229,10 @@ class MeteoReader:
     def get_wind_speed_at_time(self, dt: datetime) -> float:
         """
         Get wind speed at a specific time.
-        
+
         Args:
             dt: Datetime to query
-            
+
         Returns:
             Wind speed in m/s at 10m height
         """
@@ -245,10 +242,10 @@ class MeteoReader:
     def get_pressure_at_time(self, dt: datetime) -> float:
         """
         Get surface pressure at a specific time.
-        
+
         Args:
             dt: Datetime to query
-            
+
         Returns:
             Surface pressure in hPa
         """
@@ -258,10 +255,10 @@ class MeteoReader:
     def get_radiation_at_time(self, dt: datetime) -> float:
         """
         Get shortwave radiation at a specific time.
-        
+
         Args:
             dt: Datetime to query
-            
+
         Returns:
             Shortwave radiation in W/m²
         """
@@ -271,10 +268,10 @@ class MeteoReader:
     def get_eto_at_time(self, dt: datetime) -> float:
         """
         Get reference ET (ET0) at a specific time.
-        
+
         Args:
             dt: Datetime to query
-            
+
         Returns:
             Reference ET in mm/day
         """
@@ -284,7 +281,7 @@ class MeteoReader:
     def to_dataframe(self) -> pd.DataFrame:
         """
         Get the underlying DataFrame.
-        
+
         Returns:
             Copy of the weather data DataFrame
         """
@@ -305,10 +302,10 @@ class MeteoReader:
 def read_weather_data(csv_path: str) -> MeteoReader:
     """
     Convenience function to load weather data.
-    
+
     Args:
         csv_path: Path to the weather data CSV file
-        
+
     Returns:
         MeteoReader instance with loaded data
     """

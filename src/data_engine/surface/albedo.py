@@ -10,15 +10,15 @@ from ..core.datacube import DataCube
 class AlbedoCalculator:
     """
     Compute surface broadband albedo from satellite imagery.
-    
+
     This class provides methods for computing surface albedo (reflectance)
     in the shortwave range (0.3-3.0 μm), which is essential for
     computing the net radiation in energy balance calculations.
-    
+
     Supported methods:
         - Landsat 8/9 TMAD (Terra Multi-sensor Algorithm for Data)
         - Landsat Collection 2 specific coefficients
-    
+
     Attributes:
         use_collection2: Use Landsat Collection 2 coefficients (default: True)
         dark_pixel_correction: Apply dark pixel correction (default: True)
@@ -53,7 +53,7 @@ class AlbedoCalculator:
     ):
         """
         Initialize AlbedoCalculator.
-        
+
         Args:
             use_collection2: Use Landsat Collection 2 coefficients
             dark_pixel_correction: Apply dark pixel correction if albedo < 0
@@ -105,10 +105,10 @@ class AlbedoCalculator:
     def _get_nodata_mask(self, cube: DataCube) -> xr.DataArray:
         """
         Get nodata mask from available QA bands.
-        
+
         Args:
             cube: Input DataCube
-            
+
         Returns:
             Boolean DataArray where True indicates valid data
         """
@@ -186,10 +186,7 @@ class AlbedoCalculator:
             swir2 = cube.get("swir22").astype(float)
 
             # Select coefficients based on collection
-            if self.use_collection2:
-                coeffs = self.COEFFS_COLLECTION2
-            else:
-                coeffs = self.COEFFS_COLLECTION1
+            coeffs = self.COEFFS_COLLECTION2 if self.use_collection2 else self.COEFFS_COLLECTION1
 
             # Compute albedo
             albedo = (
@@ -252,13 +249,13 @@ class AlbedoCalculator:
     ) -> xr.DataArray:
         """
         Compute directional-hemispherical albedo (black-sky albedo).
-        
+
         This accounts for the anisotropic reflection properties of surfaces.
-        
+
         Args:
             cube: DataCube with broadband albedo
             solar_zenith_angle: Solar zenith angle in radians
-            
+
         Returns:
             Black-sky albedo adjusted for solar angle
         """
@@ -296,13 +293,13 @@ class AlbedoCalculator:
     ) -> xr.DataArray:
         """
         Compute bihemispherical albedo (white-sky albedo).
-        
+
         This represents albedo under diffuse illumination conditions.
-        
+
         Args:
             cube: DataCube with broadband albedo
             average_solar_zenith: Average solar zenith angle factor
-            
+
         Returns:
             White-sky albedo
         """

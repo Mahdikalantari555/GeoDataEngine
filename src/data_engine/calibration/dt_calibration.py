@@ -57,8 +57,8 @@ class CalibrationResult:
     """Result container for dT calibration."""
     a_coefficient: float  # Slope of dT-(Ts-Ta) relationship
     b_coefficient: float  # Intercept of dT-(Ts-Ta) relationship
-    dT_cold: float  # Calibrated dT at cold pixel (K)
-    dT_hot: float  # Calibrated dT at hot pixel (K)
+    dT_cold: float  # Calibrated dT at cold pixel (K)  # noqa: N815
+    dT_hot: float  # Calibrated dT at hot pixel (K)  # noqa: N815
     ts_cold: float  # Ts at cold pixel (K)
     ts_hot: float  # Ts at hot pixel (K)
     air_temperature: float  # Air temperature at 2m (K)
@@ -120,7 +120,7 @@ class DTCalibration:
 
     ENHANCED: Now enforces the cold pixel energy balance constraint:
         H_cold = Rn_cold - G_cold - LE_cold ≈ 0
-    
+
     Where LE_cold is derived from instantaneous reference ET:
         ET0_inst = ET0_daily × (Rs_inst / Rs_daily)
         LE_cold = ET0_inst × λ × ρw / 3600
@@ -319,7 +319,7 @@ class DTCalibration:
             )
 
         # Create calibration log entry
-        calibration_log = CalibrationLog(
+        CalibrationLog(
             scene_id=scene_id,
             timestamp=timestamp,
             status=calibration_result.status,
@@ -373,7 +373,7 @@ class DTCalibration:
     def calibrate_from_anchors(self, cube, anchors):
         """
         Calibrate using DataCube and AnchorPixelsResult with enhanced cluster-based anchors.
-        
+
         Supports both legacy single-pixel anchors and new cluster-based anchors.
         For cluster-based anchors, uses median statistics from the anchor clusters.
 
@@ -575,7 +575,7 @@ class DTCalibration:
         """
         Perform full dT calibration using anchor pixels with METRIC cold pixel constraint.
 
-        Enforces the cold pixel energy balance constraint: H_cold ≈ 0 where 
+        Enforces the cold pixel energy balance constraint: H_cold ≈ 0 where
         LE_cold = ET0_inst, preventing ET overestimation.
 
         Args:
@@ -785,7 +785,8 @@ class DTCalibration:
                 # Where u is wind speed at 2m in m/s
                 #
                 # Get wind speed if available, otherwise use typical value
-                wind_speed_array = cube.get("u") if cube is not None else None
+                # Note: cube not available in this calibration scope; use default
+                wind_speed_array = None
                 if wind_speed_array is not None:
                     wind_speed = float(np.nanmean(wind_speed_array.values)) if hasattr(wind_speed_array, 'values') else float(np.nanmean(wind_speed_array))
                     wind_speed = np.clip(wind_speed, 1.0, 10.0)  # Clip to reasonable range
@@ -841,7 +842,7 @@ class DTCalibration:
             #
             # At the cold pixel, this gives:
             #   dT_cold = a * (Ts_cold - Ta) + (1 - a) * (Ts_hot - Ta)
-            #           = a * dT_cold_physical + (1 - a) * dT_hot_physical
+            #           = a * dt_cold_physical + (1 - a) * dt_hot_physical
             #
             # For proper cold pixel behavior (dT_cold ≈ 0), we need a ≈ 1
             # But this means no calibration! The proper approach is:
@@ -970,19 +971,19 @@ class DTCalibration:
     ) -> tuple[CalibrationResult, Any]:
         """
         Execute the complete METRIC calibration pipeline as specified in the algorithm.
-        
+
         This method implements the exact METRIC algorithm flow:
-        1. Scene-level pre-validation → 2. Dynamic anchor candidate selection → 
-        3. Anchor pixel physics checks → 4. Calibration solve (dT = a·Ts + b) → 
+        1. Scene-level pre-validation → 2. Dynamic anchor candidate selection →
+        3. Anchor pixel physics checks → 4. Calibration solve (dT = a·Ts + b) →
         5. Global post-calibration validation → 6. Final decision logic with logging
-        
+
         Args:
             cube: DataCube with scene data
             scene_id: Scene identifier for logging
             energy_balance_manager: EnergyBalanceManager instance for H/LE calculation
             anchor_pixel_selector: AnchorPixelSelector instance
             validation_config: Configuration for validation thresholds
-            
+
         Returns:
             CalibrationResult with full pipeline execution results
         """
@@ -1072,7 +1073,7 @@ class DTCalibration:
             energy_balance_manager.set_anchor_pixel_calibration(
                 calibration.a_coefficient, calibration.b_coefficient
             )
-            eb_results = energy_balance_manager.calculate(cube)
+            energy_balance_manager.calculate(cube)
 
             # Get validation arrays
             ef = cube.get("EF")
@@ -1193,7 +1194,7 @@ class DTCalibration:
             elif qa_pixel is not None:
                 logger.info(f"QA coverage (array-based): {valid_pixels}/{roi_pixels} = {valid_pixel_fraction:.3f}")
             else:
-                logger.info(f"QA coverage (array-based): {valid_pixels}/{total_pixels} = {valid_pixel_fraction:.3f}")
+                logger.info(f"QA coverage (array-based): {valid_pixels}/{roi_pixels} = {valid_pixel_fraction:.3f}")
             logger.info(f"Threshold - Reject: <{qa_reject_threshold:.2f}")
 
             if valid_pixel_fraction < qa_reject_threshold:
@@ -1214,12 +1215,12 @@ class DTCalibration:
     def _perform_anchor_physics_validation(self, cube, anchor_result, energy_balance_manager) -> tuple[bool, list[str]]:
         """
         Perform anchor pixel physics validation.
-        
+
         Args:
             cube: DataCube with scene data
             anchor_result: AnchorPixelsResult from selection
             energy_balance_manager: EnergyBalanceManager for H/LE calculation
-            
+
         Returns:
             Tuple of (valid: bool, issues: List[str])
         """
@@ -1251,7 +1252,7 @@ class DTCalibration:
             )
 
             # Calculate energy balance to get H, LE at anchor pixels
-            eb_results = energy_balance_manager.calculate(cube)
+            energy_balance_manager.calculate(cube)
 
             # Get anchor pixel data
             cold_y, cold_x = anchor_result.cold_pixel.y, anchor_result.cold_pixel.x
@@ -1334,10 +1335,10 @@ class DTCalibration:
     def _get_air_temperature(self, cube) -> float:
         """
         Get air temperature from cube.
-        
+
         Args:
             cube: DataCube with weather data
-            
+
         Returns:
             Air temperature in Kelvin
         """
@@ -1355,11 +1356,11 @@ class DTCalibration:
     ) -> GlobalPostCalibrationValidation:
         """
         Perform global post-calibration validation on calibrated scene data.
-        
+
         This method validates that the calibrated scene data meets physical
         realism constraints specified in the METRIC algorithm. If any constraint
         is violated, the validation fails.
-        
+
         Validates:
         1. EF distribution sanity:
            - EF_min ≥ 0.15
@@ -1371,16 +1372,16 @@ class DTCalibration:
         3. Evapotranspiration ratio (ETrF):
            - P95(ETrF) ≤ 1.15
            - mean(ETrF) ≤ 1.05
-        
+
         Args:
             ef: Evaporative fraction array (dimensionless)
             h: Sensible heat flux array (W/m²)
             etrf: Reference evapotranspiration fraction array (dimensionless)
             raise_on_failure: Whether to raise ValueError if validation fails
-            
+
         Returns:
             GlobalPostCalibrationValidation with validation results and statistics
-            
+
         Raises:
             ValueError: If validation fails and raise_on_failure is True
         """
@@ -1411,7 +1412,7 @@ class DTCalibration:
 
         return result
 
-    def compute_dT_map(
+    def compute_dt_map(
         self,
         ts: xr.DataArray,
         calibration: CalibrationResult

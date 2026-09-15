@@ -10,14 +10,14 @@ from ..core.datacube import DataCube
 class ShortwaveRadiation:
     """
     Compute shortwave radiation components for energy balance.
-    
-    This class calculates incoming shortwave radiation (Rs↓), outgoing 
+
+    This class calculates incoming shortwave radiation (Rs↓), outgoing
     shortwave reflection (R_s↑), and net shortwave radiation (R_ns).
-    
-    The net shortwave radiation is the difference between incoming and 
+
+    The net shortwave radiation is the difference between incoming and
     reflected shortwave radiation, representing the solar energy absorbed
     by the surface.
-    
+
     Attributes:
         apply_sun_angle_correction: Apply solar zenith angle correction
     """
@@ -25,7 +25,7 @@ class ShortwaveRadiation:
     def __init__(self, apply_sun_angle_correction: bool = True):
         """
         Initialize ShortwaveRadiation calculator.
-        
+
         Args:
             apply_sun_angle_correction: Apply solar zenith angle correction
         """
@@ -34,23 +34,23 @@ class ShortwaveRadiation:
     def compute(self, cube: DataCube) -> DataCube:
         """
         Compute all shortwave radiation components and add to DataCube.
-        
+
         Required inputs:
             - shortwave_radiation: Incoming shortwave from weather data (W/m²)
             - albedo: Surface broadband albedo (from albedo module)
             - sun_elevation: Sun elevation angle in degrees (from MTL)
-        
+
         Outputs:
             - Rs_down: Incoming shortwave radiation (W/m²)
             - R_s_up: Outgoing/reflected shortwave radiation (W/m²)
             - R_ns: Net shortwave radiation (W/m²)
-        
+
         Args:
             cube: Input DataCube with required bands
-            
+
         Returns:
             DataCube with added shortwave radiation components
-            
+
         Raises:
             ValueError: If required inputs are missing
         """
@@ -81,10 +81,10 @@ class ShortwaveRadiation:
     def _validate_inputs(self, cube: DataCube) -> None:
         """
         Validate that required inputs are present in DataCube.
-        
+
         Args:
             cube: Input DataCube
-            
+
         Raises:
             ValueError: If required inputs are missing
         """
@@ -93,9 +93,8 @@ class ShortwaveRadiation:
 
         if missing:
             # Check for sun_elevation if sun angle correction is enabled
-            if self.apply_sun_angle_correction:
-                if "sun_elevation" not in cube.bands() and "sun_elevation" not in cube.scalars():
-                    missing.append("sun_elevation (required for sun angle correction)")
+            if self.apply_sun_angle_correction and "sun_elevation" not in cube.bands() and "sun_elevation" not in cube.scalars():
+                missing.append("sun_elevation (required for sun angle correction)")
 
             raise ValueError(
                 f"Missing required inputs for shortwave radiation: {missing}. "
@@ -109,16 +108,16 @@ class ShortwaveRadiation:
     ) -> xr.DataArray:
         """
         Apply solar zenith angle correction to shortwave radiation.
-        
+
         Uses the cosine of the solar zenith angle to adjust the incoming
         radiation based on sun position:
             cos(θz) = sin(sun_elevation)
             Rs↓_corrected = Rs↓ * cos(θz)
-        
+
         Args:
             cube: Input DataCube containing sun_elevation
             shortwave_rad: Original shortwave radiation
-            
+
         Returns:
             Sun angle corrected shortwave radiation
         """
@@ -155,14 +154,14 @@ class ShortwaveRadiation:
     ) -> xr.DataArray:
         """
         Compute outgoing (reflected) shortwave radiation.
-        
+
         Uses the surface albedo to calculate reflected shortwave:
             R_s↑ = α * Rs↓
-        
+
         Args:
             Rs_down: Incoming shortwave radiation (W/m²)
             albedo: Surface broadband albedo (dimensionless)
-            
+
         Returns:
             Outgoing shortwave radiation (W/m²)
         """
@@ -184,14 +183,14 @@ class ShortwaveRadiation:
     ) -> xr.DataArray:
         """
         Compute net shortwave radiation absorbed by the surface.
-        
+
         Net shortwave is the incoming radiation minus the reflected portion:
             R_ns = (1 - α) * Rs↓
-        
+
         Args:
             Rs_down: Incoming shortwave radiation (W/m²)
             albedo: Surface broadband albedo (dimensionless)
-            
+
         Returns:
             Net shortwave radiation (W/m²)
         """
@@ -214,15 +213,15 @@ class ShortwaveRadiation:
     ) -> tuple[xr.DataArray, xr.DataArray]:
         """
         Split total shortwave into direct and diffuse components.
-        
+
         Uses a simple model based on solar elevation and atmospheric
         transmittance to estimate the direct and diffuse fractions.
-        
+
         Args:
             Rs_down: Total incoming shortwave (W/m²)
             sun_elevation: Sun elevation angle in degrees
             atmospheric_transmittance: Clear-sky transmittance (default: 0.75)
-            
+
         Returns:
             Tuple of (direct_component, diffuse_component) DataArrays
         """

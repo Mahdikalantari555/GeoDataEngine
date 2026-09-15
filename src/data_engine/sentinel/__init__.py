@@ -22,8 +22,8 @@ if not (_sentinel_root / "pipeline.py").is_file() or not (_sentinel_root / "conf
     _raise_sentinel_unavailable()
 
 # Import the copied Sentinel sources when the asset root is valid.
-from .config import BAND_MAPPING, SENTINEL_COLLECTION
-from .pipeline import SentinelFetcher, SentinelPipeline
+from .config import BAND_MAPPING, SENTINEL_COLLECTION  # noqa: E402
+from .pipeline import SentinelFetcher, SentinelPipeline  # noqa: E402
 
 __all__ = [
     "BAND_MAPPING",

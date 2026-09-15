@@ -122,9 +122,9 @@ class ValidationResult:
 class ComprehensiveMETRICValidator:
     """
     Comprehensive validation framework for METRIC ET calculations.
-    
+
     This validator performs multiple levels of validation:
-    
+
     1. **Energy Balance Closure**: Validates Rn = G + H + LE
     2. **Physical Constraints**: Ensures all variables are within realistic bounds
     3. **ETrF Sanity Checks**: Validates reference ET fraction ranges
@@ -155,7 +155,7 @@ class ComprehensiveMETRICValidator:
     def __init__(self, scene_id: str | None = None):
         """
         Initialize comprehensive validator.
-        
+
         Args:
             scene_id: Scene identifier for logging
         """
@@ -172,12 +172,12 @@ class ComprehensiveMETRICValidator:
     ) -> ValidationResult:
         """
         Perform complete validation of METRIC workflow.
-        
+
         Args:
             cube: DataCube with all input data
             results: Dictionary of calculation results
             calibration_data: Optional calibration information
-            
+
         Returns:
             ValidationResult with complete assessment
         """
@@ -201,12 +201,12 @@ class ComprehensiveMETRICValidator:
 
             # Step 2: Surface Properties Validation
             self._start_step("surface_properties", "Validating surface property calculations")
-            surface_validation = self._validate_surface_properties(cube)
+            self._validate_surface_properties(cube)
             validation_result.steps.append(self.current_step)
 
             # Step 3: Radiation Balance Validation
             self._start_step("radiation_balance", "Validating radiation balance components")
-            radiation_validation = self._validate_radiation_balance(cube)
+            self._validate_radiation_balance(cube)
             validation_result.steps.append(self.current_step)
 
             # Step 4: Energy Balance Closure Validation
@@ -229,7 +229,7 @@ class ComprehensiveMETRICValidator:
 
             # Step 7: METRIC-Specific Rule Validation
             self._start_step("metric_rules", "Validating METRIC-specific rules")
-            metric_validation = self._validate_metric_rules(cube, results, calibration_data)
+            self._validate_metric_rules(cube, results, calibration_data)
             validation_result.steps.append(self.current_step)
 
             # Step 8: Quality Assessment
@@ -474,7 +474,7 @@ class ComprehensiveMETRICValidator:
                 return None
 
             # Use existing EnergyBalanceValidator
-            validator = EnergyBalanceValidator()
+            EnergyBalanceValidator()
 
             # Get sample pixel locations for validation
             # For simplicity, use center pixel and a few random pixels

@@ -30,7 +30,7 @@ from .comprehensive_validation import (
 class METRICValidationIntegrator:
     """
     Integration class for METRIC validation framework.
-    
+
     This class provides methods to integrate validation into the existing
     download_and_process_debal.py workflow with minimal code changes.
     """
@@ -38,7 +38,7 @@ class METRICValidationIntegrator:
     def __init__(self, scene_id: str | None = None, log_level: str = "INFO"):
         """
         Initialize validation integrator.
-        
+
         Args:
             scene_id: Scene identifier for logging and reporting
             log_level: Logging level for validation messages
@@ -64,16 +64,16 @@ class METRICValidationIntegrator:
     ) -> ValidationResult:
         """
         Run complete validation after METRIC pipeline execution.
-        
+
         This function is designed to be called after the METRIC pipeline
         has completed and results are available.
-        
+
         Args:
             results: Dictionary of METRIC calculation results
             cube: DataCube with all processed data
             calibration_data: Optional calibration information
             output_dir: Directory to save validation reports
-            
+
         Returns:
             ValidationResult with complete assessment
         """
@@ -114,16 +114,16 @@ class METRICValidationIntegrator:
     ) -> bool:
         """
         Validate a specific step in the pipeline.
-        
+
         This function can be called after each major step in the pipeline
         to catch issues early.
-        
+
         Args:
             step_name: Name of the pipeline step being validated
             cube: Current DataCube state
             results: Current results dictionary
             step_data: Additional data specific to this step
-            
+
         Returns:
             True if validation passed, False otherwise
         """
@@ -196,8 +196,8 @@ class METRICValidationIntegrator:
         if all(v is not None for v in [cube.get("R_n"), cube.get("G"), cube.get("H"), cube.get("LE")]):
             rn = cube.get("R_n").values
             g = cube.get("G").values
-            h = cube.get("H").values
-            le = cube.get("LE").values
+            _h_values = cube.get("H").values
+            _le_values = cube.get("LE").values
 
             # Check for negative available energy
             available_energy = rn - g
@@ -261,7 +261,7 @@ class METRICValidationIntegrator:
 def add_validation_to_download_process():
     """
     Generate code snippets to add validation to download_and_process_debal.py.
-    
+
     This function provides the code modifications needed to integrate
     the validation framework into the existing workflow.
     """
@@ -281,18 +281,18 @@ validation_integrator = METRICValidationIntegrator(scene_id=scene_date)
 # Modify the main() function to include validation
 def main():
     """Main function with integrated validation."""
-    
+
     print("Starting Landsat download and METRIC-ET processing for Debal ROI")
-    
+
     try:
         # Step 1: Download Landsat data
         print("Step 1: Downloading Landsat data from MPC...")
         landsat_dir, scene_date = download_landsat_for_debal()
-        
+
         # Step 2: Run METRIC pipeline
         print("Step 2: Running METRIC-ET pipeline...")
         results, cube = run_metric_pipeline(landsat_dir)
-        
+
         # Step 2.5: Run validation after pipeline completion
         print("Step 2.5: Running comprehensive validation...")
         validation_result = validation_integrator.validate_after_pipeline_execution(
@@ -300,7 +300,7 @@ def main():
             cube=cube,
             output_dir="validation_output"
         )
-        
+
         # Check validation quality and provide recommendations
         if validation_result.overall_quality_flag in [QualityFlag.POOR, QualityFlag.BAD]:
             print(f"⚠️  WARNING: Validation quality is {validation_result.overall_quality_flag.name}")
@@ -310,20 +310,20 @@ def main():
                     print(f"  - {step.name}: {step.errors_count} errors")
         else:
             print(f"✓ Validation passed with {validation_result.overall_quality_flag.name} quality")
-        
+
         # Step 3: Save desired outputs
         print("Step 3: Saving desired outputs...")
         saved_files = save_desired_outputs(results, cube, "debal_outputs", scene_date.replace('-', ''))
-        
+
         # Step 4: Save validation summary
         print("Step 4: Saving validation summary...")
         validation_summary = validation_integrator.get_validation_summary()
-        
+
         # Add validation info to summary
         saved_files["validation_report"] = "validation_output"
         saved_files["validation_quality"] = validation_result.overall_quality_flag.name
         saved_files["confidence_score"] = validation_result.confidence_score
-        
+
         print("\\nProcessing completed successfully!")
         print(f"Landsat data: {landsat_dir}")
         print(f"Outputs saved to: debal_outputs/")
@@ -346,7 +346,7 @@ def main():
 def create_validation_config():
     """
     Create a validation configuration file.
-    
+
     Returns:
         Dictionary with validation configuration settings
     """
@@ -397,11 +397,11 @@ def create_validation_config():
 def save_validation_config(config: dict[str, Any], output_path: str) -> str:
     """
     Save validation configuration to file.
-    
+
     Args:
         config: Validation configuration dictionary
         output_path: Path to save configuration file
-        
+
     Returns:
         Path to saved configuration file
     """
@@ -425,19 +425,19 @@ METRIC ET VALIDATION FRAMEWORK INTEGRATION INSTRUCTIONS
 
 1. REQUIRED IMPORTS:
    Add these imports to download_and_process_debal.py:
-   
+
    from data_engine.validation import METRICValidationIntegrator
    from data_engine.validation.comprehensive_validation import QualityFlag
 
 2. INITIALIZE VALIDATION:
    Add this initialization code in your main() function:
-   
+
    # Initialize validation integrator
    validation_integrator = METRICValidationIntegrator(scene_id=scene_date)
 
 3. ADD VALIDATION STEP:
    After running the METRIC pipeline, add validation:
-   
+
    # Run comprehensive validation
    validation_result = validation_integrator.validate_after_pipeline_execution(
        results=results,
@@ -447,7 +447,7 @@ METRIC ET VALIDATION FRAMEWORK INTEGRATION INSTRUCTIONS
 
 4. CHECK VALIDATION QUALITY:
    Add quality check after validation:
-   
+
    if validation_result.overall_quality_flag in [QualityFlag.POOR, QualityFlag.BAD]:
        print(f"⚠️  WARNING: Validation quality is {validation_result.overall_quality_flag.name}")
        print("Consider reviewing the validation report for details.")
@@ -456,7 +456,7 @@ METRIC ET VALIDATION FRAMEWORK INTEGRATION INSTRUCTIONS
 
 5. SAVE VALIDATION INFO:
    Add validation information to your output summary:
-   
+
    saved_files["validation_report"] = "validation_output"
    saved_files["validation_quality"] = validation_result.overall_quality_flag.name
    saved_files["confidence_score"] = validation_result.confidence_score

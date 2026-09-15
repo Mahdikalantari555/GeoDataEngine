@@ -62,15 +62,15 @@ class LatentHeatFluxConfig:
 class LatentHeatFlux:
     """
     Calculate latent heat flux (LE) for METRIC energy balance.
-    
+
     The latent heat flux represents the energy used for evapotranspiration.
     It is calculated as the residual of the energy balance equation:
-    
+
         LE = Rn - G - H
-    
+
     This is the most important component for ET estimation, as it directly
     relates to the water vaporization process.
-    
+
     Attributes:
         config: Configuration parameters for LE calculation
     """
@@ -78,7 +78,7 @@ class LatentHeatFlux:
     def __init__(self, config: LatentHeatFluxConfig | None = None):
         """
         Initialize LatentHeatFlux calculator.
-        
+
         Args:
             config: Optional configuration parameters. Uses defaults if not provided.
         """
@@ -91,11 +91,11 @@ class LatentHeatFlux:
     ) -> np.ndarray:
         """
         Calculate available energy (Rn - G).
-        
+
         Args:
             rn: Net radiation (W/m²)
             G: Soil heat flux (W/m²)
-            
+
         Returns:
             Available energy (W/m²)
         """
@@ -109,14 +109,14 @@ class LatentHeatFlux:
     ) -> np.ndarray:
         """
         Calculate LE as energy balance residual.
-        
+
         LE = Rn - G - H
-        
+
         Args:
             rn: Net radiation (W/m²)
             G: Soil heat flux (W/m²)
             H: Sensible heat flux (W/m²)
-            
+
         Returns:
             Latent heat flux (W/m²)
         """
@@ -129,13 +129,13 @@ class LatentHeatFlux:
     ) -> np.ndarray:
         """
         Calculate evaporative fraction (EF).
-        
+
         EF = LE / (Rn - G)
-        
+
         Args:
             le: Latent heat flux (W/m²)
             available_energy: Rn - G (W/m²)
-            
+
         Returns:
             Evaporative fraction (dimensionless)
         """
@@ -200,15 +200,15 @@ class LatentHeatFlux:
     ) -> np.ndarray:
         """
         Convert LE to instantaneous ET rate.
-        
+
         ET = LE / λ (where λ is latent heat of vaporization)
-        
+
         Result in mm/hour (assuming le is in W/m²)
-        
+
         Args:
             le: Latent heat flux (W/m²)
             lambda_vaporization: Latent heat of vaporization (J/kg)
-            
+
         Returns:
             Instantaneous ET rate (mm/hr)
         """
@@ -229,15 +229,15 @@ class LatentHeatFlux:
     ) -> dict[str, np.ndarray]:
         """
         Calculate ET fractions (ETrF and EToF).
-        
+
         ETrF = ET / ETr (reference ET for alfalfa)
         EToF = ET / ETo (reference ET for grass)
-        
+
         Args:
             le: Latent heat flux (W/m²)
             eto: Reference ET for grass (mm/hr)
             etr: Reference ET for alfalfa (mm/hr)
-            
+
         Returns:
             Dictionary with ET fractions
         """
@@ -268,15 +268,15 @@ class LatentHeatFlux:
     ) -> dict[str, np.ndarray]:
         """
         Perform quality checks on LE calculation.
-        
+
         Returns quality flags and metrics.
-        
+
         Args:
             le: Latent heat flux (W/m²)
             rn: Net radiation (W/m²)
             G: Soil heat flux (W/m²)
             H: Sensible heat flux (W/m²)
-            
+
         Returns:
             Dictionary with quality metrics
         """
@@ -338,14 +338,14 @@ class LatentHeatFlux:
     ) -> dict[str, np.ndarray]:
         """
         Calculate latent heat flux and related parameters with comprehensive validation.
-        
+
         Args:
             rn: Net radiation array (W/m²)
             G: Soil heat flux array (W/m²)
             H: Sensible heat flux array (W/m²)
             ts_kelvin: Surface temperature in Kelvin (optional, for stress indicators)
             apply_constraints: Whether to apply energy balance constraints
-            
+
         Returns:
             Dictionary containing:
                 - 'LE': Latent heat flux (W/m²)
@@ -353,7 +353,7 @@ class LatentHeatFlux:
                 - 'EF': Evaporative fraction
                 - 'ET_inst': Instantaneous ET rate (mm/hr)
                 - 'stress_indicator': Optional stress indicator from surface temperature
-                
+
         Raises:
             ValueError: If input arrays have incompatible shapes or invalid units
         """
@@ -439,7 +439,7 @@ class LatentHeatFlux:
     ) -> dict[str, np.ndarray]:
         """
         Calculate latent heat flux with full quality checks and ET fractions.
-        
+
         Args:
             rn: Net radiation array (W/m²)
             G: Soil heat flux array (W/m²)
@@ -447,7 +447,7 @@ class LatentHeatFlux:
             ts_kelvin: Surface temperature in Kelvin (optional)
             eto: Reference ET for grass (mm/hr, optional)
             etr: Reference ET for alfalfa (mm/hr, optional)
-            
+
         Returns:
             Dictionary containing all LE-related parameters and quality metrics
         """
@@ -516,15 +516,15 @@ class LatentHeatFlux:
     ) -> np.ndarray:
         """
         Calculate temperature-based stress indicator.
-        
+
         High surface temperature combined with low evaporative fraction
         may indicate water stress conditions.
-        
+
         Args:
             le: Latent heat flux (W/m²)
             available_energy: Available energy (Rn - G) (W/m²)
             ts_kelvin: Surface temperature (K)
-            
+
         Returns:
             Stress indicator (0.0 to 1.0, higher values indicate more stress)
         """
@@ -550,7 +550,7 @@ def create_latent_heat_flux(
 ) -> LatentHeatFlux:
     """
     Factory function to create LatentHeatFlux instance with enhanced configuration.
-    
+
     Args:
         allow_negative: Whether to allow negative LE (advection conditions)
         min_ef: Minimum evaporative fraction (default: 0.0)
@@ -560,17 +560,17 @@ def create_latent_heat_flux(
             - max_le: Maximum LE value (W/m²)
             - min_available_energy: Minimum available energy for EF calculation
             - quality_threshold: Quality flag threshold
-            
+
     Returns:
         Configured LatentHeatFlux instance
-        
+
     Examples:
         >>> # Standard METRIC daytime conditions
         >>> le_calculator = create_latent_heat_flux()
-        
+
         >>> # Allow negative LE for advection studies
         >>> le_calculator = create_latent_heat_flux(allow_negative=True, min_le=-200.0)
-        
+
         >>> # Flexible ET fraction scaling for stressed conditions
         >>> le_calculator = create_latent_heat_flux(max_ef=1.5)
     """

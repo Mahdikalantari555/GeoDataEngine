@@ -6,7 +6,7 @@ using the reference ET fraction (ETrF) approach.
 
 Formulas:
     ET_daily = ETrF × ETr_daily
-    
+
 Where:
     - ETrF = reference ET fraction (dimensionless)
     - ETr_daily = daily reference ET for alfalfa (mm/day)
@@ -63,14 +63,14 @@ class DailyETConfig:
 class DailyET:
     """
     Scale instantaneous ET to daily ET totals.
-    
+
     This class implements the conversion from instantaneous ET measurements
     at satellite overpass time to daily ET totals using the reference ET
     fraction (ETrF) approach.
-    
+
     Attributes:
         config: Configuration parameters for daily ET calculation
-    
+
     Example:
         >>> daily_et = DailyET()
         >>> etrf = np.array([0.8, 0.6, 0.9])
@@ -104,13 +104,13 @@ class DailyET:
     ) -> np.ndarray:
         """
         Calculate daily ET from reference ET fraction.
-        
+
         ET_daily = ETrF × ETr_daily
-        
+
         Args:
             etrf: Reference ET fraction (dimensionless)
             etr_daily: Daily reference ET for alfalfa (mm/day)
-            
+
         Returns:
             Daily actual ET (mm/day)
         """
@@ -137,19 +137,19 @@ class DailyET:
     ) -> np.ndarray:
         """
         Calculate daily ET with daylight fraction adjustment.
-        
+
         NOTE: This method is DEPRECATED. The standard approach uses:
         ET_daily = ETrF × ETr_daily
-        
+
         The daylight fraction approach was incorrectly multiplying by an additional
         factor, which caused ET underestimation. This method is kept for backward
         compatibility but should not be used for new calculations.
-        
+
         Args:
             etrf: Reference ET fraction (dimensionless)
             etr_daily: Daily reference ET for alfalfa (mm/day)
             daylight_fraction: Fraction of daylight hours (0-1) [DEPRECATED]
-            
+
         Returns:
             Daily actual ET (mm/day)
         """
@@ -179,14 +179,14 @@ class DailyET:
     ) -> np.ndarray:
         """
         Estimate daily ETr from instantaneous ETr.
-        
+
         ETr_daily = ETr_inst × K_T
-        
+
         Where K_T is the time factor, typically 24 for constant conditions.
-        
+
         Args:
             etr_inst: Instantaneous reference ET (mm/hr)
-            
+
         Returns:
             Estimated daily reference ET (mm/day)
         """
@@ -201,7 +201,7 @@ class DailyET:
     ) -> None:
         """
         Log comprehensive daily ET statistics for QA/QC.
-        
+
         Args:
             etrf: Reference ET fraction array
             etr_daily: Daily reference ET array
@@ -260,17 +260,17 @@ class DailyET:
     ) -> np.ndarray:
         """
         Scale instantaneous ET to daily ET using reference ET ratio.
-        
+
         ET_daily = ET_inst × (ETr_daily / ETr_inst)
-        
+
         This method uses the ratio of daily to instantaneous reference ET
         to scale the instantaneous actual ET.
-        
+
         Args:
             et_inst: Instantaneous ET rate (mm/hr)
             etr_inst: Instantaneous reference ET (mm/hr)
             etr_daily: Daily reference ET (mm/day)
-            
+
         Returns:
             Daily actual ET (mm/day)
         """
@@ -356,13 +356,13 @@ class DailyET:
     ) -> dict[str, np.ndarray]:
         """
         Calculate daily ET with all available information.
-        
+
         Args:
             et_inst: Instantaneous ET rate (mm/hr)
             etr_inst: Instantaneous reference ET for alfalfa (mm/hr)
             etr_daily: Daily reference ET for alfalfa (mm/day)
             et0_daily: Optional daily reference ET for grass (mm/day)
-            
+
         Returns:
             Dictionary containing all ET-related parameters
         """
@@ -411,14 +411,14 @@ class DailyET:
     ) -> dict[str, np.ndarray]:
         """
         Calculate daily ET directly from latent heat flux.
-        
+
         This method combines instantaneous ET calculation and daily scaling.
-        
+
         Args:
             le: Latent heat flux (W/m²)
             etr_daily: Daily reference ET for alfalfa (mm/day)
             lambda_vaporization: Latent heat of vaporization (J/kg)
-            
+
         Returns:
             Dictionary with ET calculations
         """
@@ -460,11 +460,11 @@ class DailyET:
     ) -> np.ndarray:
         """
         Calculate monthly ET total from daily values.
-        
+
         Args:
             et_daily: Daily ET array (mm/day)
             days_in_month: Number of days in the month
-            
+
         Returns:
             Monthly ET total (mm/month)
         """
@@ -478,11 +478,11 @@ class DailyET:
     ) -> np.ndarray:
         """
         Calculate seasonal ET total from daily values.
-        
+
         Args:
             et_daily: Daily ET array (mm/day)
             days_in_season: Number of days in the season
-            
+
         Returns:
             Seasonal ET total (mm/season)
         """

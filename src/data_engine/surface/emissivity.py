@@ -10,15 +10,15 @@ from ..core.datacube import DataCube
 class EmissivityCalculator:
     """
     Compute surface emissivity for thermal infrared calculations.
-    
+
     Surface emissivity is essential for accurate estimation of longwave
     radiation and sensible heat flux in energy balance applications.
-    
+
     Methods:
         - NDVI-based emissivity
         - Proportion of vegetation (Pv) based emissivity
         - Land cover type based emissivity
-    
+
     Attributes:
         ndvi_min: Minimum NDVI for bare soil
         ndvi_max: Maximum NDVI for full vegetation
@@ -45,7 +45,7 @@ class EmissivityCalculator:
     ):
         """
         Initialize EmissivityCalculator.
-        
+
         Args:
             ndvi_min: Minimum NDVI for bare soil
             ndvi_max: Maximum NDVI for full vegetation
@@ -58,13 +58,13 @@ class EmissivityCalculator:
     def compute(self, cube: DataCube) -> DataCube:
         """
         Compute emissivity and add to DataCube.
-        
+
         Args:
             cube: Input DataCube containing NDVI or vegetation bands
-            
+
         Returns:
             DataCube with added emissivity band
-            
+
         Raises:
             ValueError: If required inputs are missing
         """
@@ -80,10 +80,10 @@ class EmissivityCalculator:
     def _get_nodata_mask(self, cube: DataCube) -> xr.DataArray:
         """
         Get nodata mask from available QA bands.
-        
+
         Args:
             cube: Input DataCube
-            
+
         Returns:
             Boolean DataArray where True indicates valid data
         """
@@ -124,17 +124,17 @@ class EmissivityCalculator:
     ) -> xr.DataArray:
         """
         Compute surface emissivity using NDVI-based method.
-        
+
         Uses piecewise function based on NDVI value:
             NDVI < 0: ε = 0.985 (water/bare soil)
             NDVI < 0.2: ε = 0.96 + 0.025 * NDVI
             NDVI > 0.5: ε = 0.98 (dense vegetation)
             else: ε = 0.96 + 0.018 * NDVI
-        
+
         Args:
             cube: DataCube
             ndvi: Pre-computed NDVI (uses cube.get("ndvi") if not provided)
-            
+
         Returns:
             Emissivity as dimensionless DataArray
         """
@@ -185,15 +185,15 @@ class EmissivityCalculator:
     ) -> xr.DataArray:
         """
         Compute emissivity using proportion of vegetation (Pv).
-        
+
         Method:
             Pv = ((NDVI - NDVI_min) / (NDVI_max - NDVI_min))²
             ε = 0.973 + 0.047 * ln(Pv)  for Pv > 0
-        
+
         Args:
             cube: DataCube
             ndvi: Pre-computed NDVI
-            
+
         Returns:
             Emissivity as dimensionless DataArray
         """
@@ -240,17 +240,17 @@ class EmissivityCalculator:
     ) -> xr.DataArray:
         """
         Compute thermal emissivity correction factor for Stefan-Boltzmann law.
-        
+
         The correction factor accounts for non-blackbody behavior:
             ε_corr = 1 - ε
-        
+
         This factor is used when computing emitted longwave radiation:
             L↑ = ε * σ * T⁴
-        
+
         Args:
             cube: DataCube
             emissivity: Pre-computed emissivity
-            
+
         Returns:
             Emissivity correction factor (1 - ε)
         """
@@ -279,14 +279,14 @@ class EmissivityCalculator:
     ) -> xr.DataArray:
         """
         Convert narrowband emissivity to broadband emissivity.
-        
+
         Uses statistical relationship between narrowband (thermal band)
         and broadband emissivity.
-        
+
         Args:
             cube: DataCube containing thermal band
             thermal_band: Pre-computed thermal band brightness temperature
-            
+
         Returns:
             Broadband emissivity
         """
@@ -323,11 +323,11 @@ class EmissivityCalculator:
     ) -> xr.DataArray:
         """
         Compute emissivity based on land cover classification.
-        
+
         Args:
             cube: DataCube
             land_cover: Land cover classification array
-            
+
         Returns:
             Emissivity based on land cover types
         """

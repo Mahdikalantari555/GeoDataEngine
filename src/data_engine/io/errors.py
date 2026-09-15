@@ -13,7 +13,7 @@ class NoSceneFoundError(LandsatIOError):
         self.partial_count = partial_count
         self.message = message
 
-    def __str__(self):
+    def __str__(self) -> str:
         if self.partial_count is not None:
             return f"{self.message} (partial overlaps: {self.partial_count})"
         return self.message
@@ -32,7 +32,7 @@ class DownloadError(LandsatIOError):
         self.url = url
         self.message = message
 
-    def __str__(self):
+    def __str__(self) -> str:
         details = []
         if self.band_name:
             details.append(f"band: {self.band_name}")
@@ -52,7 +52,7 @@ class PartialDataError(LandsatIOError):
         self.available_bands = available_bands
         self.message = message
 
-    def __str__(self):
+    def __str__(self) -> str:
         missing_str = ", ".join(self.missing_bands)
         return f"{self.message} Missing bands: [{missing_str}]"
 

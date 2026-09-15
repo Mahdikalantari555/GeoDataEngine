@@ -13,10 +13,10 @@ import xarray as xr
 class DataCube:
     """
     A data structure for storing multi-band raster data with metadata.
-    
+
     This class provides a container for storing and manipulating
     multi-band raster data from satellite imagery and other sources.
-    
+
     Attributes:
         data: Dictionary storing band name -> xarray.DataArray mappings
         crs: Coordinate reference system (rasterio format)
@@ -36,11 +36,11 @@ class DataCube:
     def add(self, name: str, data: xr.DataArray | np.ndarray | float) -> 'DataCube':
         """
         Add a band or scalar value to the DataCube.
-        
+
         Args:
             name: Name of the band/scalar
             data: xarray.DataArray, numpy array, or scalar value
-            
+
         Returns:
             self for method chaining
         """
@@ -85,13 +85,13 @@ class DataCube:
     def shape(self, band_name: str) -> tuple:
         """
         Get the shape of a specific band.
-        
+
         Args:
             band_name: Name of the band
-            
+
         Returns:
             Tuple of (y, x) dimensions
-            
+
         Raises:
             KeyError: If band not found
         """
@@ -118,11 +118,11 @@ class DataCube:
     def update_crs(self, crs: rasterio.crs.CRS, transform: np.ndarray) -> 'DataCube':
         """
         Update CRS and transform for the DataCube.
-        
+
         Args:
             crs: Coordinate reference system
             transform: Affine transform array
-            
+
         Returns:
             self for method chaining
         """
@@ -133,7 +133,7 @@ class DataCube:
     def to_dict(self) -> dict:
         """
         Convert DataCube to dictionary for serialization.
-        
+
         Returns:
             Dictionary representation of the DataCube
         """

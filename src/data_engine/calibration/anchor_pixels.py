@@ -120,30 +120,28 @@ class AnchorPixelsResult:
     def __post_init__(self):
         """Ensure backward compatibility by creating single pixels from clusters."""
         # Create single pixel anchors from clusters for backward compatibility
-        if self.cold_cluster is not None and len(self.cold_cluster.pixel_indices) > 0:
-            if self.cold_pixel is None:
-                # Use the best pixel (first in list) for single-pixel access
-                best_y, best_x = self.cold_cluster.pixel_indices[0]
-                self.cold_pixel = AnchorPixel(
-                    x=best_x,
-                    y=best_y,
-                    temperature=self.cold_cluster.ts_values[0] if len(self.cold_cluster.ts_values) > 0 else np.nan,
-                    ts=self.cold_cluster.ts_values[0] if len(self.cold_cluster.ts_values) > 0 else np.nan,
-                    ndvi=self.cold_cluster.ndvi_values[0] if self.cold_cluster.ndvi_values is not None and len(self.cold_cluster.ndvi_values) > 0 else np.nan,
-                    albedo=self.cold_cluster.albedo_values[0] if self.cold_cluster.albedo_values is not None and len(self.cold_cluster.albedo_values) > 0 else np.nan
-                )
+        if self.cold_cluster is not None and len(self.cold_cluster.pixel_indices) > 0 and self.cold_pixel is None:
+            # Use the best pixel (first in list) for single-pixel access
+            best_y, best_x = self.cold_cluster.pixel_indices[0]
+            self.cold_pixel = AnchorPixel(
+                x=best_x,
+                y=best_y,
+                temperature=self.cold_cluster.ts_values[0] if len(self.cold_cluster.ts_values) > 0 else np.nan,
+                ts=self.cold_cluster.ts_values[0] if len(self.cold_cluster.ts_values) > 0 else np.nan,
+                ndvi=self.cold_cluster.ndvi_values[0] if self.cold_cluster.ndvi_values is not None and len(self.cold_cluster.ndvi_values) > 0 else np.nan,
+                albedo=self.cold_cluster.albedo_values[0] if self.cold_cluster.albedo_values is not None and len(self.cold_cluster.albedo_values) > 0 else np.nan
+            )
 
-        if self.hot_cluster is not None and len(self.hot_cluster.pixel_indices) > 0:
-            if self.hot_pixel is None:
-                best_y, best_x = self.hot_cluster.pixel_indices[0]
-                self.hot_pixel = AnchorPixel(
-                    x=best_x,
-                    y=best_y,
-                    temperature=self.hot_cluster.ts_values[0] if len(self.hot_cluster.ts_values) > 0 else np.nan,
-                    ts=self.hot_cluster.ts_values[0] if len(self.hot_cluster.ts_values) > 0 else np.nan,
-                    ndvi=self.hot_cluster.ndvi_values[0] if self.hot_cluster.ndvi_values is not None and len(self.hot_cluster.ndvi_values) > 0 else np.nan,
-                    albedo=self.hot_cluster.albedo_values[0] if self.hot_cluster.albedo_values is not None and len(self.hot_cluster.albedo_values) > 0 else np.nan
-                )
+        if self.hot_cluster is not None and len(self.hot_cluster.pixel_indices) > 0 and self.hot_pixel is None:
+            best_y, best_x = self.hot_cluster.pixel_indices[0]
+            self.hot_pixel = AnchorPixel(
+                x=best_x,
+                y=best_y,
+                temperature=self.hot_cluster.ts_values[0] if len(self.hot_cluster.ts_values) > 0 else np.nan,
+                ts=self.hot_cluster.ts_values[0] if len(self.hot_cluster.ts_values) > 0 else np.nan,
+                ndvi=self.hot_cluster.ndvi_values[0] if self.hot_cluster.ndvi_values is not None and len(self.hot_cluster.ndvi_values) > 0 else np.nan,
+                albedo=self.hot_cluster.albedo_values[0] if self.hot_cluster.albedo_values is not None and len(self.hot_cluster.albedo_values) > 0 else np.nan
+            )
 
     def to_dict(self) -> dict[str, Any]:
         result = {
@@ -175,10 +173,10 @@ class AnchorPixelsResult:
 class AnchorPixelSelector:
     """
     Select hot and cold anchor pixels for METRIC calibration.
-    
+
     Enhanced implementation with cluster-based selection and improved
     METRIC-compliant constraints.
-    
+
     Key improvements:
     - Selects N pixels (cluster) instead of single pixels
     - Uses ET ratio criterion for cold pixel selection
@@ -381,7 +379,7 @@ class AnchorPixelSelector:
     ) -> AnchorPixelsResult:
         """
         Enhanced anchor pixel selection with all improvements.
-        
+
         Implements:
         1. Scene-scale temperature normalization
         2. Percentile-based candidate selection
@@ -411,7 +409,7 @@ class AnchorPixelSelector:
         valid_ndvi = ndvi[valid_mask] if ndvi is not None else None
         valid_albedo = albedo[valid_mask] if albedo is not None else None
         valid_lai = lai[valid_mask] if lai is not None else None
-        valid_coords = np.where(valid_mask)
+        np.where(valid_mask)
 
         n_points = len(valid_ts)
         logger.info(f"Enhanced method: {n_points} valid points for METRIC analysis")
@@ -705,11 +703,10 @@ class AnchorPixelSelector:
             logger.info(f"Temperature difference validation PASS: dT={temp_diff:.1f}K >= {min_temp_diff}K")
 
         # Cold pixel validation (allow H_cold up to 50-70 W/m², not forcing to 0)
-        if h is not None and h_cold is not None and not np.isnan(h_cold):
-            if h_cold > 150:
-                validation_issues.append(f"Cold pixel H={h_cold:.1f} W/m² > 150 W/m² (may indicate poor cold anchor)")
-                # Don't fail for this - just warn
-                logger.warning(f"Cold pixel H={h_cold:.1f} W/m² is higher than typical")
+        if h is not None and h_cold is not None and not np.isnan(h_cold) and h_cold > 150:
+            validation_issues.append(f"Cold pixel H={h_cold:.1f} W/m² > 150 W/m² (may indicate poor cold anchor)")
+            # Don't fail for this - just warn
+            logger.warning(f"Cold pixel H={h_cold:.1f} W/m² is higher than typical")
 
         if le is not None and le_cold is not None and not np.isnan(le_cold) and rn is not None and g is not None:
             # Check that LE_cold <= available energy (physical constraint)
@@ -799,11 +796,11 @@ class AnchorPixelSelector:
     ) -> np.ndarray:
         """
         Apply METRIC-compliant hot pixel energy ratio constraints.
-        
+
         Required:
         - H / (Rn - G) >= 0.8 (energy-dominated)
         - LE / (Rn - G) <= 0.2 (minimal evaporation)
-        
+
         If constraints remove too many pixels, relax to 0.7 / 0.3.
         """
         logger = logging.getLogger(__name__)
@@ -849,10 +846,10 @@ class AnchorPixelSelector:
     ) -> np.ndarray:
         """
         Rank cold pixels by ET ratio deviation from 1.0.
-        
+
         METRIC Reality: Cold pixel assumption is ET_cold ≈ ET0_inst ± 5-10%
         NOT: H_cold = 0
-        
+
         Selection criterion: minimize |ET_cold / ET0_inst - 1|
         """
         logger = logging.getLogger(__name__)
@@ -900,11 +897,11 @@ class AnchorPixelSelector:
     ) -> tuple[bool, list[str]]:
         """
         Validate dT-Ts relationship shape after calibration.
-        
+
         NOTE: The slope validation (a coefficient) is computed during calibration,
         not at anchor selection time. This method validates physically meaningful
         constraints that can be checked with anchor pixel data alone.
-        
+
         Validates:
         - dT values are physically plausible
         - Temperature range is sufficient
@@ -957,7 +954,7 @@ class AnchorPixelSelector:
                     issues.append(f"Hot pixel H ratio={h_ratio:.2f} < 0.5 (insufficient energy dominance)")
 
         # dT at median Ts should be physically plausible (2-10 K typical METRIC range)
-        ts_median = (ts_cold + ts_hot) / 2
+        (ts_cold + ts_hot) / 2
         dT_median = (dT_cold + dT_hot) / 2
         if dT_median < 0 or dT_median > 25:
             issues.append(f"dT at median Ts={dT_median:.2f}K outside plausible range [0, 25]K")
@@ -981,13 +978,13 @@ class AnchorPixelSelector:
     ) -> float:
         """
         Calculate enhanced confidence score with scene quality penalties.
-        
+
         Confidence increases with:
         - Validation passed
         - Large temperature difference
         - High Ts variance (healthy scene)
         - Many anchor candidates (robust selection)
-        
+
         Confidence decreases with:
         - Excessive relaxation
         - Low Ts variance (easy scenes)

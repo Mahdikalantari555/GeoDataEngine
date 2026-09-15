@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import contextlib
+
 __version__ = "0.1.0"
 
 # Shared core modules (importable as data_engine.<module>)
@@ -44,12 +46,10 @@ from data_engine.surface import (
     VegetationIndices,
 )
 
-try:
+with contextlib.suppress(ImportError):
     from data_engine.landsat import (
-        METRICPipeline as LandsatMETRICPipeline,  # ruff: ignore[unused-import]
+        METRICPipeline as LandsatMETRICPipeline,
     )
-except ImportError:  # sentinel only — landsat is an alias
-    pass
 
 __all__ = [
     "SENTINEL_ROOT",
@@ -60,6 +60,7 @@ __all__ = [
     "LandsatReader",
     "LatentHeatFlux",
     "LongwaveRadiation",
+    "LandsatMETRICPipeline",
     "METRICPipeline",
     "MeteoReader",
     "NetRadiation",
@@ -70,5 +71,18 @@ __all__ = [
     "SoilHeatFlux",
     "VegetationIndices",
     "__version__",
+    "calibration",
     "constants",
+    "core",
+    "energy_balance",
+    "et",
+    "io",
+    "output",
+    "preprocess",
+    "radiation",
+    "settings",
+    "surface",
+    "utils",
+    "validation",
+    "weather",
 ]

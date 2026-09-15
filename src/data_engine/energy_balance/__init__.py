@@ -12,10 +12,10 @@ Energy Balance Equation:
 
 Example usage:
     from data_engine.energy_balance import EnergyBalanceManager
-    
+
     manager = EnergyBalanceManager()
     results = manager.calculate(cube)
-    
+
     G = results['G']
     H = results['H']
     LE = results['LE']

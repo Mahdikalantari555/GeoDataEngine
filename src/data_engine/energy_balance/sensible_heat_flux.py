@@ -68,12 +68,12 @@ class SensibleHeatFluxConfig:
 class SensibleHeatFlux:
     """
     Calculate sensible heat flux (H) for METRIC energy balance.
-    
+
     The sensible heat flux represents the energy transferred between
     the surface and the atmosphere as heat. This is the most complex
     component of the METRIC energy balance due to the need for
     stability corrections and anchor pixel calibration.
-    
+
     Attributes:
         config: Configuration parameters for H calculation
     """
@@ -81,7 +81,7 @@ class SensibleHeatFlux:
     def __init__(self, config: SensibleHeatFluxConfig | None = None):
         """
         Initialize SensibleHeatFlux calculator.
-        
+
         Args:
             config: Optional configuration parameters. Uses defaults if not provided.
         """
@@ -94,13 +94,13 @@ class SensibleHeatFlux:
     ) -> np.ndarray:
         """
         Calculate air density using ideal gas law.
-        
+
         ρ = P / (R_specific * T)
-        
+
         Args:
             ta_kelvin: Air temperature in Kelvin
             pressure_pa: Atmospheric pressure in Pa
-            
+
         Returns:
             Air density in kg/m³
         """
@@ -124,23 +124,18 @@ class SensibleHeatFlux:
     ) -> np.ndarray:
         """
         Calculate displacement height (d) from roughness length.
-        
+
         d ≈ 2/3 * z0m * h / k (simplified)
         For vegetation: d ≈ 0.67 * z0m * LAI^0.5 (empirical)
-        
+
         Args:
             z0m: Roughness length for momentum (m)
             lai: Leaf Area Index (optional)
-            
+
         Returns:
             Displacement height (m)
         """
-        if lai is not None:
-            # Empirical relationship for vegetated surfaces
-            d = 0.67 * z0m * np.sqrt(np.maximum(lai, 0))
-        else:
-            # Simplified: d ≈ 2/3 * z0m * 100 (empirical factor)
-            d = 2.0 / 3.0 * z0m * 100.0
+        d = 0.67 * z0m * np.sqrt(np.maximum(lai, 0)) if lai is not None else 2.0 / 3.0 * z0m * 100.0
 
         # Physical bounds - ensure d doesn't exceed reasonable limits
         d = np.clip(d, 0.0, np.maximum(z0m * 10.0, 0.1))  # More conservative upper bound
@@ -158,9 +153,9 @@ class SensibleHeatFlux:
     ) -> np.ndarray:
         """
         Calculate aerodynamic resistance under neutral conditions.
-        
+
         rah = ln((z_m - d) / z0m) * ln((z_h - d) / z0h) / (k² * u)
-        
+
         Args:
             z0m: Roughness length for momentum (m)
             z0h: Roughness length for heat (m)
@@ -168,7 +163,7 @@ class SensibleHeatFlux:
             u: Wind speed (m/s)
             z_wind: Wind measurement height (m)
             z_temp: Temperature measurement height (m)
-            
+
         Returns:
             Aerodynamic resistance (s/m) under neutral conditions
         """
@@ -221,19 +216,19 @@ class SensibleHeatFlux:
     ) -> np.ndarray:
         """
         Calculate stability parameter (z/L).
-        
+
         z/L = g * z * H / (ρ * cp * T * u*³)
-        
+
         Simplified for iterative solution:
         z/L ≈ g * z * rah * H / (ρ * cp * T * k² * u²)
-        
+
         Args:
             H: Sensible heat flux (W/m²)
             rah: Aerodynamic resistance (s/m)
             rho: Air density (kg/m³)
             ta_kelvin: Air temperature (K)
             z_measure: Measurement height (m)
-            
+
         Returns:
             Stability parameter (z/L)
         """
@@ -255,20 +250,20 @@ class SensibleHeatFlux:
     ) -> tuple[np.ndarray, np.ndarray]:
         """
         Calculate stability correction functions (ψ_m, ψ_h).
-        
+
         For unstable conditions (z/L < 0):
             ψ_m = 2 * ln((1 + x)/2) + ln((1 + x²)/2) - 2*atan(x) + π/2
             ψ_h = 2 * ln((1 + y)/2) + ln((1 + y²)/2)
-            
+
             where x = (1 - 16*z/L)^0.25, y = (1 - 16*z/L)^0.5
-        
+
         For stable conditions (z/L > 0):
             ψ_m = ψ_h = -β * z/L
-            
+
         Args:
             z_L: Stability parameter (z/L)
             z: Reference height (m)
-            
+
         Returns:
             Tuple of (ψ_m, ψ_h) arrays
         """
@@ -335,9 +330,9 @@ class SensibleHeatFlux:
     ) -> np.ndarray:
         """
         Calculate aerodynamic resistance with stability corrections.
-        
+
         rah = [ln((z_m - d)/z0m) - ψ_m] * [ln((z_h - d)/z0h) - ψ_h] / (k² * u)
-        
+
         Args:
             z0m: Roughness length for momentum (m)
             z0h: Roughness length for heat (m)
@@ -347,7 +342,7 @@ class SensibleHeatFlux:
             psi_h: Stability correction for heat
             z_wind: Wind measurement height (m)
             z_temp: Temperature measurement height (m)
-            
+
         Returns:
             Aerodynamic resistance with stability corrections (s/m)
         """
@@ -412,14 +407,14 @@ class SensibleHeatFlux:
     ) -> np.ndarray:
         """
         Calculate empirical dT based on surface characteristics.
-        
+
         This is a fallback when anchor pixel calibration is not available.
-        
+
         Args:
             ts_kelvin: Surface temperature (K)
             ta_kelvin: Air temperature (K)
             ndvi: Normalized Difference Vegetation Index
-            
+
         Returns:
             dT array (K)
         """
@@ -448,7 +443,7 @@ class SensibleHeatFlux:
     ) -> np.ndarray:
         """
         Iteratively calculate aerodynamic resistance with stability corrections.
-        
+
         Args:
             z0m: Roughness length for momentum (m)
             z0h: Roughness length for heat (m)
@@ -459,7 +454,7 @@ class SensibleHeatFlux:
             ta_kelvin: Air temperature (K)
             z_wind: Wind measurement height (m)
             z_temp: Temperature measurement height (m)
-            
+
         Returns:
             Aerodynamic resistance with stability corrections (s/m)
         """
@@ -507,7 +502,7 @@ class SensibleHeatFlux:
     ) -> dict[str, np.ndarray]:
         """
         Calculate sensible heat flux and related parameters.
-        
+
         Args:
             rn: Net radiation array (W/m²)
             ts_kelvin: Surface temperature in Kelvin
@@ -519,7 +514,7 @@ class SensibleHeatFlux:
             lai: Leaf Area Index (optional)
             dt_a: dT slope coefficient (optional)
             dt_b: dT intercept coefficient (optional)
-            
+
         Returns:
             Dictionary containing:
                 - 'H': Sensible heat flux (W/m²)
@@ -818,13 +813,13 @@ def create_sensible_heat_flux(
 ) -> SensibleHeatFlux:
     """
     Factory function to create SensibleHeatFlux instance.
-    
+
     Args:
         z_wind: Wind measurement height (m)
         z_temp: Temperature measurement height (m)
         use_stability: Whether to apply stability corrections
         **kwargs: Additional configuration parameters
-        
+
     Returns:
         Configured SensibleHeatFlux instance
     """

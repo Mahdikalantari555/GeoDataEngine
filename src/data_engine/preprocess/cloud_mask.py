@@ -18,14 +18,14 @@ class CloudMaskerError(Exception):
 class CloudMasker:
     """
     Cloud and shadow detection using Landsat QA pixel band.
-    
+
     This class implements Fmask-like cloud detection using the QA pixel band
     from Landsat Collection 2 Level-2 data.
-    
+
     Attributes:
         cloud_confidence_threshold: Minimum confidence level for cloud detection
         dilate_pixels: Number of pixels to dilate cloud mask
-        
+
     Example:
         >>> masker = CloudMasker()
         >>> mask = masker.create_mask(cube.get('qa_pixel'))
@@ -56,7 +56,7 @@ class CloudMasker:
     ):
         """
         Initialize the CloudMasker.
-        
+
         Args:
             cloud_confidence_threshold: Minimum cloud confidence level
                 0 = Low, 1 = Medium, 2 = High, 3 = LCD
@@ -76,14 +76,14 @@ class CloudMasker:
     ) -> xr.DataArray:
         """
         Create a cloud mask from the QA pixel band.
-        
+
         Args:
             qa_pixel: QA pixel band data array
             confidence_override: Optional override for cloud confidence threshold
-            
+
         Returns:
             Boolean DataArray where True = clear, False = cloud/shadow
-            
+
         Raises:
             CloudMaskerError: If input data is invalid
         """
@@ -154,12 +154,7 @@ class CloudMasker:
             mask = mask & (snow == 0)
 
         # Handle water
-        if self.include_water:
-            # Water is clear
-            mask = mask | (water == 1)
-        else:
-            # Water is masked
-            mask = mask & (water == 0)
+        mask = mask | (water == 1) if self.include_water else mask & (water == 0)
 
         # Dilate cloud mask to catch edge pixels
         if self.dilate_pixels > 0:
@@ -181,15 +176,15 @@ class CloudMasker:
     ) -> DataCube:
         """
         Apply a cloud mask to a DataCube.
-        
+
         Args:
             cube: Input DataCube
             mask: Cloud mask (True = clear, False = cloud)
             fill_value: Value to use for masked pixels
-            
+
         Returns:
             New DataCube with masked data
-            
+
         Raises:
             CloudMaskerError: If cube and mask dimensions don't match
         """
@@ -220,13 +215,13 @@ class CloudMasker:
     def compute_cloud_coverage(self, cube: DataCube) -> float:
         """
         Compute the percentage of cloud cover in a DataCube.
-        
+
         Args:
             cube: Input DataCube with 'qa_pixel' band
-            
+
         Returns:
             Cloud coverage as percentage (0-100)
-            
+
         Raises:
             CloudMaskerError: If qa_pixel band not found
         """
@@ -248,11 +243,11 @@ class CloudMasker:
     def _dilate_mask(self, mask: np.ndarray, iterations: int) -> np.ndarray:
         """
         Dilate the cloud mask using binary dilation.
-        
+
         Args:
             mask: Input boolean mask
             iterations: Number of dilation iterations
-            
+
         Returns:
             Dilated mask
         """
@@ -262,7 +257,6 @@ class CloudMasker:
             # Fallback: manual binary dilation using convolution
             def manual_dilation(arr, iterations):
                 """Manual binary dilation using max filter."""
-                kernel_size = 3
                 padded = np.pad(arr, ((1, 1), (1, 1)), mode='constant', constant_values=False)
 
                 for _ in range(iterations):
@@ -292,27 +286,23 @@ class CloudMasker:
     ) -> xr.DataArray:
         """
         Detect cloud shadows based on NIR darkening.
-        
+
         This is a simplified shadow detection based on the assumption
         that cloud shadows appear as dark spots in NIR band.
-        
+
         Args:
             nir: Near-infrared band DataArray
             cloud_mask: Cloud mask (True = clear)
             sun_elevation: Sun elevation angle in degrees
             sun_azimuth: Sun azimuth angle in degrees
-            
+
         Returns:
             Shadow mask (True = shadow)
         """
-        if not isinstance(nir, xr.DataArray):
-            nir_values = nir
-        else:
-            nir_values = nir.values
+        nir_values = nir if not isinstance(nir, xr.DataArray) else nir.values
 
         # Calculate local threshold for shadow detection
         # Shadow pixels have NIR values below local mean
-        kernel_size = 7
 
         # Simple threshold-based shadow detection
         nir_mean = np.nanmean(nir_values)
@@ -345,7 +335,7 @@ class CloudMasker:
     def get_cloud_confidence_levels(self) -> dict:
         """
         Get the cloud confidence level mapping.
-        
+
         Returns:
             Dictionary mapping confidence levels to descriptions
         """
@@ -364,12 +354,12 @@ def create_cloud_mask(
 ) -> xr.DataArray:
     """
     Convenience function to create a cloud mask.
-    
+
     Args:
         qa_pixel: QA pixel band data
         cloud_confidence: Cloud confidence threshold
         dilate_pixels: Number of pixels to dilate
-        
+
     Returns:
         Cloud mask (True = clear, False = cloud)
     """

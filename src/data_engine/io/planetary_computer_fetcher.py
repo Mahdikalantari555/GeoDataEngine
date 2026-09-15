@@ -4,6 +4,7 @@ This module provides functionality to fetch Landsat scenes directly from
 Microsoft Planetary Computer's STAC API at runtime.
 """
 
+import contextlib
 import json
 import logging
 import os
@@ -11,6 +12,21 @@ from datetime import datetime, timedelta
 from pathlib import Path
 
 import numpy as np
+import rasterio
+import stackstac
+from pyproj import Transformer
+from pystac_client import Client
+from shapely.geometry import box
+from shapely.geometry.base import BaseGeometry
+from shapely.ops import transform as shapely_transform
+from shapely.ops import unary_union
+
+from .errors import (
+    AuthenticationError,
+    DownloadError,
+    GeometryError,
+    NoSceneFoundError,
+)
 
 # --- NEP 50 compatibility: numpy 2.x can_cast no longer accepts Python ints/floats ---
 # stackstac calls np.can_cast(1, dtype) with Python scalars which now raises TypeError.
@@ -36,7 +52,7 @@ def _patched_can_cast(from_, to, casting="safe"):  # type: ignore
                 try:
                     from_dtype = np.asarray(from_).dtype
                 except Exception:
-                    raise _e
+                    raise _e from _e
             return _original_can_cast(from_dtype, to, casting=casting)
         raise
 
@@ -57,21 +73,6 @@ try:
 except Exception:
     pass
 
-import rasterio
-import stackstac
-from pyproj import Transformer
-from pystac_client import Client
-from shapely.geometry import box
-from shapely.geometry.base import BaseGeometry
-from shapely.ops import transform as shapely_transform
-from shapely.ops import unary_union
-
-from .errors import (
-    AuthenticationError,
-    DownloadError,
-    GeometryError,
-    NoSceneFoundError,
-)
 
 # Fix PROJ database conflict with PostgreSQL on Windows
 # Remove PROJ_LIB to use rasterio's bundled PROJ database instead of PostgreSQL's older version
@@ -113,13 +114,13 @@ SENTINEL_REQUIRED_BANDS = ['blue', 'green', 'red', 'nir08', 'swir16', 'swir22', 
 
 class PlanetaryComputerLandsatFetcher:
     """Fetcher for Landsat scenes from Microsoft Planetary Computer.
-    
+
     This class handles authentication, searching, and downloading Landsat
     Collection 2 Level-2 scenes from Planetary Computer's STAC API.
-    
+
     The fetcher downloads bands as GeoTIFF files clipped to the ROI,
     and generates MTL.json metadata files compatible with METRIC processing.
-    
+
     Attributes:
         collection: STAC collection ID (default: landsat-c2-l2)
         bands: List of band names to fetch
@@ -142,7 +143,7 @@ class PlanetaryComputerLandsatFetcher:
         use_cache: bool = True
     ) -> None:
         """Initialize the fetcher.
-        
+
         Args:
             collection: STAC collection ID (default: landsat-c2-l2)
             bands: List of band names to fetch (default: standard METRIC bands)
@@ -183,7 +184,7 @@ class PlanetaryComputerLandsatFetcher:
     ) -> list[dict]:
         """
         Fetch and download Landsat scenes clipped to ROI.
-        
+
         Args:
             roi_geometry: GeoJSON geometry dict or shapely geometry for the area of interest
             date_range: Tuple of (start_date, end_date) - both inclusive
@@ -192,7 +193,7 @@ class PlanetaryComputerLandsatFetcher:
             resolution: Output resolution in meters (default: 30.0 for Landsat)
             sort_by: Sort results by 'date' (default) or 'cloud_cover'
             min_coverage_ratio: Minimum valid pixel coverage ratio (default: 0.55 = 55%)
-            
+
         Returns:
             List of dicts with scene info and file paths:
                 {
@@ -207,7 +208,7 @@ class PlanetaryComputerLandsatFetcher:
                     "band_files": Dict[str, Path] (band name -> file path)
                 }
             Sorted by date (ascending) or cloud cover (ascending) based on sort_by param
-            
+
         Raises:
             NoSceneFoundError: No suitable scenes found
             AuthenticationError: MPC authentication failed
@@ -329,11 +330,11 @@ class PlanetaryComputerLandsatFetcher:
         date_range: tuple[str | datetime, str | datetime]
     ) -> list[dict]:
         """Search for available scenes (returns metadata only, no download).
-        
+
         Args:
             roi_geometry: GeoJSON geometry dict or shapely geometry
             date_range: Tuple of (start_date, end_date) as strings or datetime
-            
+
         Returns:
             List of scene metadata dictionaries
         """
@@ -379,11 +380,11 @@ class PlanetaryComputerLandsatFetcher:
         date_range: tuple[str | datetime, str | datetime]
     ) -> int:
         """Get count of available scenes without downloading.
-        
+
         Args:
             roi_geometry: GeoJSON geometry dict or shapely geometry
             date_range: Tuple of (start_date, end_date) as strings or datetime
-            
+
         Returns:
             Number of scenes that match the criteria (including partial overlaps)
         """
@@ -402,13 +403,13 @@ class PlanetaryComputerLandsatFetcher:
         min_cloud_cover: float
     ) -> list:
         """Internal method to search STAC API for scenes using bbox.
-        
+
         Args:
             bbox: [min_lon, min_lat, max_lon, max_lat] in WGS84
             start_date: Start datetime
             end_date: End datetime
             min_cloud_cover: Minimum cloud cover percentage
-            
+
         Returns:
             List of STAC items that intersect with bbox and meet cloud cover criteria
         """
@@ -445,15 +446,15 @@ class PlanetaryComputerLandsatFetcher:
         items: list,
     ) -> list:
         """Filter items to only those that fully contain the ROI geometry.
-        
+
         This method provides an initial filter based on scene footprint geometry.
         Note: Final validation of actual pixel coverage happens AFTER downloading
         in the download_and_clip_bands method.
-        
+
         Args:
             roi_bbox: [min_lon, min_lat, max_lon, max_lat] in WGS84
             items: List of STAC items
-            
+
         Returns:
             List of items where ROI bbox intersects with scene footprint
         """
@@ -490,17 +491,17 @@ class PlanetaryComputerLandsatFetcher:
         min_coverage_ratio: float = 0.55
     ) -> dict[str, Path]:
         """Download and clip bands to GeoTIFF files using stackstac.
-        
+
         Args:
             item: STAC item (signed or unsigned)
             bbox: [min_lon, min_lat, max_lon, max_lat] in WGS84
             output_dir: Directory to save output files
             resolution: Output resolution in meters
             min_coverage_ratio: Minimum valid pixel coverage ratio (default: 0.55 = 55%)
-            
+
         Returns:
             Dictionary mapping band names to file paths
-            
+
         Raises:
             DownloadError: If scene has insufficient valid pixel coverage
         """
@@ -541,22 +542,19 @@ class PlanetaryComputerLandsatFetcher:
         stack = stack.compute()
 
         downloaded_files = {}
-        date_str = item.datetime.strftime('%Y%m%d')
+        item.datetime.strftime('%Y%m%d')
 
         # Get the transform and shape from the stack
         # stackstac returns (band, y, x) or (time, band, y, x)
         if 'band' in stack.dims:
-            band_dim = 'band'
+            pass
         elif 'x' in stack.dims and 'y' in stack.dims:
             # Single band case - need to check
-            band_dim = None
+            pass
 
         # Get the crs and transform
         # Stackstac should have these as attributes
-        if hasattr(stack, 'crs') and stack.crs is not None:
-            crs = stack.crs
-        else:
-            crs = f"EPSG:{utm_epsg}"
+        crs = stack.crs if hasattr(stack, 'crs') and stack.crs is not None else f"EPSG:{utm_epsg}"
 
         # Get transform from stack's transform attribute or compute it
         if hasattr(stack, 'transform') and stack.transform is not None:
@@ -665,10 +663,8 @@ class PlanetaryComputerLandsatFetcher:
                         # Clean up downloaded files
                         for f in downloaded_files.values():
                             if f and f.exists():
-                                try:
+                                with contextlib.suppress(BaseException):
                                     f.unlink()
-                                except:
-                                    pass
                         raise DownloadError(
                             f"Scene {item.id} has insufficient valid pixel coverage "
                             f"({coverage_ratio:.1%} < {min_coverage_ratio:.1%})"
@@ -682,11 +678,11 @@ class PlanetaryComputerLandsatFetcher:
 
     def _create_mtl_metadata(self, item, output_dir: Path) -> Path:
         """Create MTL.json from STAC item properties.
-        
+
         Args:
             item: STAC item
             output_dir: Directory to save MTL.json
-            
+
         Returns:
             Path to the created MTL.json file
         """
@@ -730,9 +726,6 @@ class PlanetaryComputerLandsatFetcher:
             "cloud_cover": cloud_cover,
             "path": path,
             "row": row,
-            "cloud_cover": cloud_cover,
-            "path": path,
-            "row": row,
             "sun_elevation": sun_elevation,
             "sun_azimuth": sun_azimuth,
             "geometry": item.geometry,
@@ -766,10 +759,10 @@ class PlanetaryComputerLandsatFetcher:
 
     def _get_utm_epsg(self, bbox: list[float]) -> int:
         """Determine UTM EPSG code for a given bbox in WGS84.
-        
+
         Args:
             bbox: [min_lon, min_lat, max_lon, max_lat] in WGS84
-            
+
         Returns:
             EPSG code for the appropriate UTM zone
         """
@@ -781,10 +774,7 @@ class PlanetaryComputerLandsatFetcher:
         zone_number = int((lon_center + 180) / 6) + 1
 
         # Northern or Southern hemisphere
-        if lat_center >= 0:
-            epsg = 32600 + zone_number  # Northern hemisphere
-        else:
-            epsg = 32700 + zone_number  # Southern hemisphere
+        epsg = 32600 + zone_number if lat_center >= 0 else 32700 + zone_number
 
         return epsg
 
@@ -794,15 +784,15 @@ class PlanetaryComputerLandsatFetcher:
         target_crs: str = None
     ) -> BaseGeometry:
         """Normalize input geometry to shapely geometry and transform to WGS84.
-        
+
         Args:
             geometry: GeoJSON dict or shapely geometry in source_crs
             target_crs: Override source CRS detection. If provided, use this CRS.
                        If not provided, will try to detect from geometry or use self.source_crs.
-        
+
         Returns:
             Shapely geometry in WGS84 (EPSG:4326)
-            
+
         Raises:
             GeometryError: If geometry is invalid or transformation fails
         """
@@ -909,10 +899,10 @@ class PlanetaryComputerLandsatFetcher:
         date_range: tuple[str | datetime, str | datetime]
     ) -> tuple[datetime, datetime]:
         """Normalize date range to datetime objects.
-        
+
         Args:
             date_range: Tuple of (start_date, end_date) as strings or datetime
-            
+
         Returns:
             Tuple of (start_datetime, end_datetime)
         """

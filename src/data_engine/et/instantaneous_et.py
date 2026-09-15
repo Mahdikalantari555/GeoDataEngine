@@ -6,7 +6,7 @@ at the satellite overpass time.
 
 Formulas:
     ET_inst = LE / λ
-    
+
 Where:
     - LE = latent heat flux (W/m²)
     - λ = latent heat of vaporization (J/kg) = 2.45e6 J/kg
@@ -14,7 +14,7 @@ Where:
 
 Reference ET Fraction (ETrF):
     ETrF = ET_inst / ETr_inst
-    
+
 Where:
     - ETr_inst = instantaneous reference ET (alfalfa) at overpass time
     - ETr = ET0 × 1.15 (alfalfa reference is 15% higher than grass)
@@ -67,14 +67,14 @@ class InstantaneousETConfig:
 class InstantaneousET:
     """
     Convert latent heat flux to instantaneous evapotranspiration rate.
-    
+
     This class handles the conversion of latent heat flux (LE) measured in
     W/m² to instantaneous ET rate in mm/hr at the satellite overpass time.
-    
+
     Attributes:
         config: Configuration parameters for ET calculation
         latent_heat: Latent heat of vaporization (J/kg)
-    
+
     Example:
         >>> et_calc = InstantaneousET()
         >>> le = np.array([200.0, 300.0, 400.0])  # W/m²
@@ -109,20 +109,20 @@ class InstantaneousET:
     ) -> np.ndarray:
         """
         Convert latent heat flux to instantaneous ET rate.
-        
+
         ET = LE / λ
-        
+
         Where:
             - LE is in W/m² = J/(s·m²)
             - λ is in J/kg
             - Result is in kg/(m²·s) = mm/s
             - Convert to mm/hr by multiplying by 3600
-        
+
         Args:
             le: Latent heat flux array (W/m²)
             temperature_k: Optional temperature array in Kelvin for temperature-
                           dependent latent heat calculation
-            
+
         Returns:
             Instantaneous ET rate (mm/hr)
         """
@@ -154,12 +154,12 @@ class InstantaneousET:
     ) -> np.ndarray:
         """
         Calculate temperature-dependent latent heat of vaporization.
-        
+
         λ = 2.501e6 - 2361 × T(°C)
-        
+
         Args:
             temperature_k: Temperature in Kelvin
-            
+
         Returns:
             Latent heat of vaporization (J/kg)
         """
@@ -173,7 +173,7 @@ class InstantaneousET:
     ) -> None:
         """
         Log comprehensive ETrF statistics for QA/QC.
-        
+
         Args:
             etrf_raw: Raw ETrF values before clipping
             etrf_clipped: Clipped ETrF values
@@ -213,17 +213,17 @@ class InstantaneousET:
     ) -> np.ndarray:
         """
         Calculate Reference ET Fraction (ETrF).
-        
+
         ETrF = ET_inst / ETr_inst
-        
+
         Where:
             - ET_inst is instantaneous actual ET
             - ETr_inst is instantaneous reference ET (alfalfa)
-        
+
         Args:
             et_inst: Instantaneous ET rate (mm/hr)
             etr_inst: Instantaneous reference ET for alfalfa (mm/hr)
-            
+
         Returns:
             Reference ET fraction (dimensionless)
         """
@@ -254,17 +254,17 @@ class InstantaneousET:
     ) -> np.ndarray:
         """
         Calculate Reference ET Fraction for grass (EToF).
-        
+
         EToF = ET_inst / ETo_inst
-        
+
         Where:
             - ET_inst is instantaneous actual ET
             - ETo_inst is instantaneous reference ET for grass
-            
+
         Args:
             et_inst: Instantaneous ET rate (mm/hr)
             eto_inst: Instantaneous reference ET for grass (mm/hr)
-            
+
         Returns:
             Grass reference ET fraction (dimensionless)
         """
@@ -292,13 +292,13 @@ class InstantaneousET:
     ) -> dict[str, np.ndarray]:
         """
         Calculate instantaneous ET and related metrics.
-        
+
         Args:
             le: Latent heat flux (W/m²)
             etr_inst: Instantaneous reference ET for alfalfa (mm/hr, optional)
             eto_inst: Instantaneous reference ET for grass (mm/hr, optional)
             temperature_k: Temperature in Kelvin for temp-dependent lambda
-            
+
         Returns:
             Dictionary containing:
                 - 'ET_inst': Instantaneous ET rate (mm/hr)
@@ -332,15 +332,15 @@ class InstantaneousET:
     ) -> np.ndarray:
         """
         Convert reference ET (grass) to alfalfa reference ET.
-        
+
         ETr = ET0 × 1.15
-        
+
         The alfalfa reference ET is approximately 15% higher than grass
         reference ET due to higher surface resistance and roughness.
-        
+
         Args:
             et0: Reference ET for grass (mm/hr or mm/day)
-            
+
         Returns:
             Reference ET for alfalfa (same units as input)
         """
@@ -352,10 +352,10 @@ class InstantaneousET:
     ) -> dict[str, str]:
         """
         Analyze spatial pattern of ETrF values.
-        
+
         Args:
             etrf: Reference ET fraction array
-            
+
         Returns:
             Dictionary with spatial pattern classification
         """

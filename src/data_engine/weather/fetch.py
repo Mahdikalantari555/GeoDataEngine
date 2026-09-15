@@ -41,18 +41,18 @@ HOURLY_WEATHER_VARS = [
 class WeatherFetcher:
     """
     Weather data fetcher from Open-Meteo API.
-    
+
     This class handles downloading weather data for specific dates and
     locations, with a focus on 7:00 UTC (10:30 Iran time) which aligns
     with Landsat overpass times.
-    
+
     The fetcher supports multiple points within an ROI to better represent
     spatial variability. Open-Meteo provides ~9km resolution weather data.
-    
+
     Attributes:
         api_url: Base URL for Open-Meteo archive API
         timeout: Request timeout in seconds
-        
+
     Example:
         >>> fetcher = WeatherFetcher()
         >>> weather_file = fetcher.download(
@@ -61,7 +61,7 @@ class WeatherFetcher:
         ...     lon=51.3890,
         ...     output_dir="data"
         ... )
-    
+
     Example with multiple points:
         >>> points = [(35.68, 51.38), (35.70, 51.40), (35.72, 51.42)]
         >>> weather_file = fetcher.download(
@@ -75,7 +75,7 @@ class WeatherFetcher:
                  timeout: int = 30):
         """
         Initialize the WeatherFetcher.
-        
+
         Args:
             api_url: Open-Meteo API endpoint URL
             timeout: Request timeout in seconds
@@ -86,11 +86,11 @@ class WeatherFetcher:
     def _generate_grid_points(self, bbox: tuple, spacing_deg: float = 0.05) -> list[tuple]:
         """
         Generate a grid of points within a bounding box.
-        
+
         Args:
             bbox: Bounding box as (min_lon, min_lat, max_lon, max_lat)
             spacing_deg: Spacing between points in degrees (default: 0.05° ~ 5.5km)
-            
+
         Returns:
             List of (lat, lon) tuples
         """
@@ -124,12 +124,12 @@ class WeatherFetcher:
     ) -> Path:
         """
         Download weather data for a specific date and location(s).
-        
+
         This method supports three modes:
         1. Single point: Provide lat and lon
         2. Multiple points: Provide points list of (lat, lon) tuples
         3. Bounding box: Provide bbox and generate grid points
-        
+
         Args:
             date: Date as YYYY-MM-DD string or datetime object
             lat: Latitude in decimal degrees (for single point mode)
@@ -140,20 +140,17 @@ class WeatherFetcher:
             target_hour: Target hour for data extraction (default: 7 for UTC)
             timezone: Timezone for the request (default: "UTC")
             grid_spacing: Spacing between grid points in degrees (default: 0.05° ~ 5.5km)
-            
+
         Returns:
             Path to the saved weather CSV file
-            
+
         Raises:
             APIRequestError: If API request fails
             DataNotFoundError: If no data available for the requested time
             ValueError: If no location specified or invalid parameters
         """
         # Convert date to string if datetime object
-        if isinstance(date, datetime):
-            date_str = date.strftime("%Y-%m-%d")
-        else:
-            date_str = date
+        date_str = date.strftime("%Y-%m-%d") if isinstance(date, datetime) else date
 
         # Validate date format
         try:
@@ -279,13 +276,13 @@ class WeatherFetcher:
     ) -> dict:
         """
         Download weather data for multiple dates.
-        
+
         Args:
             dates: List of dates as YYYY-MM-DD strings or datetime objects
             lat: Latitude in decimal degrees
             lon: Longitude in decimal degrees
             output_dir: Directory to save weather data CSV files
-            
+
         Returns:
             Dictionary mapping dates to file paths or error messages
         """
@@ -323,14 +320,14 @@ def download_weather_for_7am_utc(
 ) -> tuple[Path | None, str]:
     """
     Download weather data specifically for 7:00 UTC (10:30 Iran time).
-    
+
     This is a convenience function that wraps the WeatherFetcher class.
-    
+
     Supports three modes:
     1. Single point: Provide lat and lon
     2. Multiple points: Provide points list of (lat, lon) tuples
     3. Bounding box: Provide bbox and generate grid points
-    
+
     Args:
         date: Date as YYYY-MM-DD string or datetime object
         lat: Latitude in decimal degrees (for single point mode)
@@ -340,10 +337,10 @@ def download_weather_for_7am_utc(
         output_dir: Directory to save weather data CSV file
         api_url: Open-Meteo API endpoint URL
         grid_spacing: Spacing between grid points in degrees (default: 0.05° ~ 5.5km)
-        
+
     Returns:
         Tuple of (file_path, status_message)
-        
+
     Example (single point):
         >>> file_path, status = download_weather_for_7am_utc(
         ...     "2025-12-23",
@@ -353,7 +350,7 @@ def download_weather_for_7am_utc(
         ... )
         >>> if file_path:
         ...     print(f"Weather data saved to {file_path}")
-    
+
     Example (multiple points):
         >>> points = [(35.68, 51.38), (35.70, 51.40), (35.72, 51.42)]
         >>> file_path, status = download_weather_for_7am_utc(
@@ -361,7 +358,7 @@ def download_weather_for_7am_utc(
         ...     points=points,
         ...     output_dir="data"
         ... )
-    
+
     Example (bounding box):
         >>> bbox = (51.38, 35.68, 51.42, 35.72)  # min_lon, min_lat, max_lon, max_lat
         >>> file_path, status = download_weather_for_7am_utc(

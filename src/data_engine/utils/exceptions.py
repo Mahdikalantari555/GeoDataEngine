@@ -9,15 +9,15 @@ and debugging.
 class METRICError(Exception):
     """
     Base exception for METRIC errors.
-    
+
     All custom METRIC exceptions inherit from this class.
     Provides context information about the error location and details.
     """
 
-    def __init__(self, message: str, details: dict = None, *args):
+    def __init__(self, message: str, details: dict = None, *args, **kwargs):
         super().__init__(message, *args)
         self.message = message
-        self.details = details or {}
+        self.details = {**(details or {}), **kwargs}
 
     def __str__(self):
         if self.details:
@@ -27,7 +27,7 @@ class METRICError(Exception):
     def add_detail(self, key: str, value) -> None:
         """
         Add detail information to the exception.
-        
+
         Args:
             key: Detail key
             value: Detail value
@@ -38,7 +38,7 @@ class METRICError(Exception):
 class DataInputError(METRICError):
     """
     Exception raised for invalid input data.
-    
+
     This includes:
     - Missing or corrupted input files
     - Invalid data format
@@ -46,13 +46,13 @@ class DataInputError(METRICError):
     - Coordinate reference system mismatches
     """
 
-    def __init__(self, message: str, input_type: str = None, file_path: str = None, *args):
+    def __init__(self, message: str, input_type: str = None, file_path: str = None, *args, **kwargs):
         details = {}
         if input_type:
             details["input_type"] = input_type
         if file_path:
             details["file_path"] = file_path
-        super().__init__(message, details, *args)
+        super().__init__(message, details, *args, **kwargs)
 
 
 class ScenePathError(DataInputError):
@@ -60,8 +60,11 @@ class ScenePathError(DataInputError):
     Exception raised for invalid Landsat scene paths.
     """
 
-    def __init__(self, message: str, scene_path: str = None, *args):
-        super().__init__(message, input_type="landsat_scene", file_path=scene_path, *args)
+    def __init__(self, message: str, scene_path: str = None, *args, **kwargs):
+        details = {"input_type": "landsat_scene"}
+        if scene_path is not None:
+            details["file_path"] = scene_path
+        super().__init__(message, **details, **kwargs)
 
 
 class WeatherDataError(DataInputError):
@@ -69,17 +72,17 @@ class WeatherDataError(DataInputError):
     Exception raised for invalid weather data.
     """
 
-    def __init__(self, message: str, missing_columns: list = None, *args):
-        details = {}
+    def __init__(self, message: str, missing_columns: list = None, *args, **kwargs):
+        details = {"input_type": "weather_data"}
         if missing_columns:
             details["missing_columns"] = missing_columns
-        super().__init__(message, input_type="weather_data", details=details, *args)
+        super().__init__(message, **details, **kwargs)
 
 
 class CalibrationError(METRICError):
     """
     Exception raised for calibration failures.
-    
+
     This includes:
     - Invalid anchor pixel selection
     - Calibration coefficient computation errors
@@ -106,7 +109,8 @@ class AnchorPixelError(CalibrationError):
             details["pixel_type"] = pixel_type
         if coordinates:
             details["coordinates"] = coordinates
-        super().__init__(message, stage="anchor_pixel_selection", details=details, *args)
+        details["stage"] = "anchor_pixel_selection"
+        super().__init__(message, details, *args)
 
 
 class DTCalibrationError(CalibrationError):
@@ -120,13 +124,14 @@ class DTCalibrationError(CalibrationError):
             details["Ts_cold"] = Ts_cold
         if Ts_hot is not None:
             details["Ts_hot"] = Ts_hot
-        super().__init__(message, stage="dT_calibration", details=details, *args)
+        details["stage"] = "dT_calibration"
+        super().__init__(message, details, *args)
 
 
 class ComputationError(METRICError):
     """
     Exception raised for computational errors in energy balance.
-    
+
     This includes:
     - Numerical overflow/underflow
     - Invalid intermediate calculations
@@ -149,7 +154,8 @@ class RadiationBalanceError(ComputationError):
         details = {}
         if component:
             details["component"] = component
-        super().__init__(message, computation_step="radiation_balance", details=details, *args)
+        details["computation_step"] = "radiation_balance"
+        super().__init__(message, details, *args)
 
 
 class EnergyBalanceError(ComputationError):
@@ -161,13 +167,14 @@ class EnergyBalanceError(ComputationError):
         details = {}
         if component:
             details["component"] = component
-        super().__init__(message, computation_step="energy_balance", details=details, *args)
+        details["computation_step"] = "energy_balance"
+        super().__init__(message, details, *args)
 
 
 class OutputError(METRICError):
     """
     Exception raised for output file errors.
-    
+
     This includes:
     - File write failures
     - Invalid output format
@@ -189,7 +196,7 @@ class GeoTIFFWriteError(OutputError):
     """
 
     def __init__(self, message: str, file_path: str = None, *args):
-        super().__init__(message, output_type="geotiff", file_path=file_path, *args)
+        super().__init__(message, *args, output_type="geotiff", file_path=file_path)
 
 
 class VisualizationError(OutputError):
@@ -201,13 +208,13 @@ class VisualizationError(OutputError):
         details = {}
         if plot_type:
             details["plot_type"] = plot_type
-        super().__init__(message, output_type="visualization", details=details, *args)
+        super().__init__(message, *args, output_type="visualization", details=details)
 
 
 class ConfigurationError(METRICError):
     """
     Exception raised for configuration errors.
-    
+
     This includes:
     - Missing configuration parameters
     - Invalid configuration values
@@ -224,7 +231,7 @@ class ConfigurationError(METRICError):
 class PipelineError(METRICError):
     """
     Exception raised for pipeline execution errors.
-    
+
     This includes:
     - Pipeline stage failures
     - Step dependency issues
@@ -245,10 +252,10 @@ class PipelineError(METRICError):
 def handle_exception(func):
     """
     Decorator to wrap functions with exception handling.
-    
+
     Converts exceptions to METRIC-specific exceptions while preserving
     the original error context.
-    
+
     Usage:
         @handle_exception
         def my_function():
@@ -288,11 +295,11 @@ def handle_exception(func):
 def create_error_context(error: Exception, context: dict) -> dict:
     """
     Create a comprehensive error context dictionary.
-    
+
     Args:
         error: The exception that occurred
         context: Additional context information
-        
+
     Returns:
         Dictionary with error details
     """

@@ -41,14 +41,14 @@ class AnchorPixelValidation:
 class EnergyBalanceValidator:
     """
     Validate energy balance closure and anchor pixel quality.
-    
+
     This class performs quality checks on the METRIC energy balance
     components and anchor pixel selection:
-    
+
     1. Energy balance closure: Rn - G - H - LE ≈ 0
     2. Anchor pixel LE and H fractions
     3. Reference ET validation
-    
+
     Attributes:
         closure_tolerance: Acceptable range for fractional residual
         le_cold_min: Minimum expected LE fraction at cold pixel
@@ -87,7 +87,7 @@ class EnergyBalanceValidator:
     ):
         """
         Initialize the EnergyBalanceValidator.
-        
+
         Args:
             closure_tolerance: Maximum acceptable fractional residual
             le_cold_range: Expected LE fraction range at cold pixel (min, max)
@@ -108,11 +108,11 @@ class EnergyBalanceValidator:
     ) -> xr.DataArray:
         """
         Compute available energy (Rn - G).
-        
+
         Args:
             rn: Net radiation (W/m²)
             g: Soil heat flux (W/m²)
-            
+
         Returns:
             Available energy (W/m²)
         """
@@ -127,13 +127,13 @@ class EnergyBalanceValidator:
     ) -> xr.DataArray:
         """
         Compute energy balance residual.
-        
+
         Args:
             rn: Net radiation (W/m²)
             g: Soil heat flux (W/m²)
             h: Sensible heat flux (W/m²)
             le: Latent heat flux (W/m²)
-            
+
         Returns:
             Residual (W/m²)
         """
@@ -148,13 +148,13 @@ class EnergyBalanceValidator:
     ) -> xr.DataArray:
         """
         Compute fractional residual (residual / (Rn - G)).
-        
+
         Args:
             rn: Net radiation (W/m²)
             g: Soil heat flux (W/m²)
             h: Sensible heat flux (W/m²)
             le: Latent heat flux (W/m²)
-            
+
         Returns:
             Fractional residual (dimensionless)
         """
@@ -191,7 +191,7 @@ class EnergyBalanceValidator:
     ) -> AnchorPixelValidation:
         """
         Validate an anchor pixel based on energy balance criteria.
-        
+
         Args:
             pixel_type: 'cold' or 'hot'
             le: Latent heat flux (W/m²)
@@ -201,7 +201,7 @@ class EnergyBalanceValidator:
             dT: Temperature difference Ts - Ta (K)
             etr_inst: Reference ET at overpass (mm/hr)
             etrf: Fraction of reference ET
-            
+
         Returns:
             AnchorPixelValidation with validation results
         """
@@ -294,7 +294,7 @@ class EnergyBalanceValidator:
     ) -> tuple[float, float]:
         """
         Validate energy balance at a specific pixel location.
-        
+
         Args:
             rn: Net radiation (W/m²)
             g: Soil heat flux (W/m²)
@@ -302,7 +302,7 @@ class EnergyBalanceValidator:
             le: Latent heat flux (W/m²)
             location: (row, col) pixel location
             pixel_type: 'cold' or 'hot'
-            
+
         Returns:
             Tuple of (residual, fractional_residual)
         """
@@ -316,10 +316,7 @@ class EnergyBalanceValidator:
         available = rn_val - g_val
         residual = rn_val - g_val - h_val - le_val
 
-        if available > 0:
-            frac_residual = residual / available
-        else:
-            frac_residual = np.nan
+        frac_residual = residual / available if available > 0 else np.nan
 
         return residual, frac_residual
 
@@ -331,12 +328,12 @@ class EnergyBalanceValidator:
     ) -> EnergyBalanceResult:
         """
         Perform full validation of anchor pixels and energy balance.
-        
+
         Args:
             cold_pixel_data: Dictionary with cold pixel values
             hot_pixel_data: Dictionary with hot pixel values
             etr_inst: Reference ET at overpass (mm/hr)
-            
+
         Returns:
             EnergyBalanceResult with all validation metrics
         """
@@ -407,10 +404,10 @@ class EnergyBalanceValidator:
     def to_dict(self, result: EnergyBalanceResult) -> dict[str, Any]:
         """
         Convert validation result to dictionary.
-        
+
         Args:
             result: EnergyBalanceResult from validate_full()
-            
+
         Returns:
             Dictionary representation of validation results
         """
@@ -454,10 +451,10 @@ class GlobalPostCalibrationValidation:
 class GlobalPostCalibrationValidator:
     """
     Perform global post-calibration validation for METRIC model.
-    
+
     This validator checks global constraints on calibrated scene data to ensure
     physically realistic energy balance and evapotranspiration estimates.
-    
+
     Constraints validated:
     1. EF distribution sanity:
        - EF_min ≥ 0.15
@@ -469,7 +466,7 @@ class GlobalPostCalibrationValidator:
     3. Evapotranspiration ratio (ETrF):
        - P95(ETrF) ≤ 1.15
        - mean(ETrF) ≤ 1.05
-    
+
     If any constraint is violated, the calibration should be rejected.
     """
 
@@ -496,7 +493,7 @@ class GlobalPostCalibrationValidator:
     ):
         """
         Initialize the GlobalPostCalibrationValidator.
-        
+
         Args:
             ef_min_threshold: Minimum acceptable EF value
             ef_p95_threshold: Maximum acceptable 95th percentile EF value
@@ -523,19 +520,19 @@ class GlobalPostCalibrationValidator:
     ) -> GlobalPostCalibrationValidation:
         """
         Perform global post-calibration validation on calibrated scene data.
-        
+
         This method validates that the calibrated scene data meets physical
         realism constraints. If any constraint is violated, the validation fails.
-        
+
         Args:
             ef: Evaporative fraction array (dimensionless)
             h: Sensible heat flux array (W/m²)
             etrf: Reference evapotranspiration fraction array (dimensionless)
             exclude_no_data: Whether to exclude NaN/invalid pixels from analysis
-            
+
         Returns:
             GlobalPostCalibrationValidation with validation results and statistics
-            
+
         Raises:
             ValueError: If required arrays are None or invalid
         """
@@ -687,16 +684,16 @@ class GlobalPostCalibrationValidator:
     ) -> GlobalPostCalibrationValidation:
         """
         Perform global validation and raise exception if constraints are violated.
-        
+
         Args:
             ef: Evaporative fraction array (dimensionless)
             h: Sensible heat flux array (W/m²)
             etrf: Reference evapotranspiration fraction array (dimensionless)
             exclude_no_data: Whether to exclude NaN/invalid pixels from analysis
-            
+
         Returns:
             GlobalPostCalibrationValidation if validation passes
-            
+
         Raises:
             ValueError: If any validation constraint is violated
         """
@@ -713,10 +710,10 @@ class GlobalPostCalibrationValidator:
     def to_dict(self, result: GlobalPostCalibrationValidation) -> dict[str, Any]:
         """
         Convert validation result to dictionary.
-        
+
         Args:
             result: GlobalPostCalibrationValidation from validate_global_calibration()
-            
+
         Returns:
             Dictionary representation of validation results
         """

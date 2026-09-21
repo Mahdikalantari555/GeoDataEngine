@@ -11,6 +11,13 @@ import logging
 import numpy as np
 import pandas as pd
 import requests
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    retry_if_result,
+    stop_after_attempt,
+    wait_exponential,
+)
 import xarray as xr
 from scipy import interpolate
 
@@ -430,8 +437,17 @@ class DynamicWeatherFetcher:
         Returns:
             Dictionary of weather variables or None if failed
         """
-        try:
-            # API parameters
+
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=1, max=30),
+            retry=(
+                retry_if_exception_type(requests.RequestException)
+                | retry_if_result(lambda r: getattr(r, "status_code", 200) in (429, 502, 503, 504))
+            ),
+            reraise=True,
+        )
+        def _request() -> requests.Response:
             params = {
                 "latitude": lat,
                 "longitude": lon,
@@ -439,26 +455,19 @@ class DynamicWeatherFetcher:
                 "end_date": date,
                 "hourly": self.HOURLY_VARIABLES,
                 "daily": self.DAILY_VARIABLES,
-                "timezone": "auto",  # Use local timezone
-                "models": "best_match"
+                "timezone": "auto",
+                "models": "best_match",
             }
-
-            # Make request
-            response = requests.get(
-                self.BASE_URL,
-                params=params,
-                timeout=30
-            )
+            response = requests.get(self.BASE_URL, params=params, timeout=30)
             response.raise_for_status()
+            return response
 
+        try:
+            response = _request()
             data = response.json()
-
-            # Extract data at 10:30 local time
             result = self._extract_overpass_data(data, date)
-
             return result
-
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001 - swallow and return None per existing contract
             logger.warning(f"Failed to fetch weather for ({lat}, {lon}) on {date}: {e}")
             return None
 

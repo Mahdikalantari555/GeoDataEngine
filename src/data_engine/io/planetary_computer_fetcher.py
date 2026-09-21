@@ -13,6 +13,7 @@ from pathlib import Path
 
 import numpy as np
 import rasterio
+import requests
 import stackstac
 from pyproj import Transformer
 from pystac_client import Client
@@ -20,6 +21,12 @@ from shapely.geometry import box
 from shapely.geometry.base import BaseGeometry
 from shapely.ops import transform as shapely_transform
 from shapely.ops import unary_union
+from tenacity import (
+    retry,
+    retry_if_exception_type,
+    stop_after_attempt,
+    wait_exponential,
+)
 
 from .errors import (
     AuthenticationError,
@@ -421,12 +428,20 @@ class PlanetaryComputerLandsatFetcher:
             "limit": 100,
         }
 
-        try:
-            search = self.client.search(**search_params)
-            items = list(search.items())
-        except Exception as e:
-            logger.error(f"STAC search request failed: {e}")
-            raise AuthenticationError(f"STAC search failed: {e}") from e
+        @retry(
+            stop=stop_after_attempt(3),
+            wait=wait_exponential(multiplier=1, min=1, max=30),
+            retry=retry_if_exception_type(requests.RequestException),
+            reraise=True,
+        )
+        def _do_search() -> list:
+            try:
+                return list(self.client.search(**search_params).items())
+            except Exception as exc:
+                logger.error(f"STAC search request failed: {exc}")
+                raise AuthenticationError(f"STAC search failed: {exc}") from exc
+
+        items = _do_search()
 
         # Filter by cloud cover - ensure we don't exceed max_cloud_cover
         filtered = []

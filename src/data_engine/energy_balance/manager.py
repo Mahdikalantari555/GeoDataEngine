@@ -162,12 +162,12 @@ class EnergyBalanceManager:
 
         # DEBUG: Log G and Rn values
         logger = logging.getLogger(__name__)
-        logger.info(f"[ENERGY BALANCE DEBUG] Rn: min={np.nanmin(rn):.2f}, max={np.nanmax(rn):.2f}, mean={np.nanmean(rn):.2f}")
-        logger.info(f"[ENERGY BALANCE DEBUG] G: min={np.nanmin(G):.2f}, max={np.nanmax(G):.2f}, mean={np.nanmean(G):.2f}")
-        logger.info(f"[ENERGY BALANCE DEBUG] G/Rn ratio: min={np.nanmin(g_result.get('G_Rn_ratio', 0)):.4f}, max={np.nanmax(g_result.get('G_Rn_ratio', 0)):.4f}")
+        logger.debug(f"[ENERGY BALANCE DEBUG] Rn: min={np.nanmin(rn):.2f}, max={np.nanmax(rn):.2f}, mean={np.nanmean(rn):.2f}")
+        logger.debug(f"[ENERGY BALANCE DEBUG] G: min={np.nanmin(G):.2f}, max={np.nanmax(G):.2f}, mean={np.nanmean(G):.2f}")
+        logger.debug(f"[ENERGY BALANCE DEBUG] G/Rn ratio: min={np.nanmin(g_result.get('G_Rn_ratio', 0)):.4f}, max={np.nanmax(g_result.get('G_Rn_ratio', 0)):.4f}")
 
         # Calculate sensible heat flux (H)
-        logger.info(f"[ENERGY BALANCE DEBUG] Calibration coefficients: dt_a={self.config.dt_a}, dt_b={self.config.dt_b}")
+        logger.debug(f"[ENERGY BALANCE DEBUG] Calibration coefficients: dt_a={self.config.dt_a}, dt_b={self.config.dt_b}")
         h_result = self.h_calculator.calculate(
             rn=rn,
             ts_kelvin=ts_kelvin,
@@ -184,12 +184,12 @@ class EnergyBalanceManager:
         rah = h_result['rah']
 
         # DEBUG: Log H values
-        logger.info(f"[ENERGY BALANCE DEBUG] H: min={np.nanmin(H):.2f}, max={np.nanmax(H):.2f}, mean={np.nanmean(H):.2f}")
-        logger.info(f"[ENERGY BALANCE DEBUG] rah: min={np.nanmin(rah):.2f}, max={np.nanmax(rah):.2f}, mean={np.nanmean(rah):.2f}")
+        logger.debug(f"[ENERGY BALANCE DEBUG] H: min={np.nanmin(H):.2f}, max={np.nanmax(H):.2f}, mean={np.nanmean(H):.2f}")
+        logger.debug(f"[ENERGY BALANCE DEBUG] rah: min={np.nanmin(rah):.2f}, max={np.nanmax(rah):.2f}, mean={np.nanmean(rah):.2f}")
 
         # Calculate available energy (Rn - G)
         available_energy = rn - G
-        logger.info(f"[ENERGY BALANCE DEBUG] Available Energy (Rn-G): min={np.nanmin(available_energy):.2f}, max={np.nanmax(available_energy):.2f}, mean={np.nanmean(available_energy):.2f}")
+        logger.debug(f"[ENERGY BALANCE DEBUG] Available Energy (Rn-G): min={np.nanmin(available_energy):.2f}, max={np.nanmax(available_energy):.2f}, mean={np.nanmean(available_energy):.2f}")
 
         # Calculate latent heat flux (LE)
         le_result = self.le_calculator.calculate(rn, G, H, ts_kelvin)
@@ -198,13 +198,13 @@ class EnergyBalanceManager:
         ET_inst = le_result['ET_inst']
 
         # DEBUG: Log LE and EF values
-        logger.info(f"[ENERGY BALANCE DEBUG] LE: min={np.nanmin(LE):.2f}, max={np.nanmax(LE):.2f}, mean={np.nanmean(LE):.2f}")
-        logger.info(f"[ENERGY BALANCE DEBUG] EF: min={np.nanmin(EF):.4f}, max={np.nanmax(EF):.4f}, mean={np.nanmean(EF):.4f}")
-        logger.info(f"[ENERGY BALANCE DEBUG] ET_inst: min={np.nanmin(ET_inst):.4f}, max={np.nanmax(ET_inst):.4f}, mean={np.nanmean(ET_inst):.4f}")
+        logger.debug(f"[ENERGY BALANCE DEBUG] LE: min={np.nanmin(LE):.2f}, max={np.nanmax(LE):.2f}, mean={np.nanmean(LE):.2f}")
+        logger.debug(f"[ENERGY BALANCE DEBUG] EF: min={np.nanmin(EF):.4f}, max={np.nanmax(EF):.4f}, mean={np.nanmean(EF):.4f}")
+        logger.debug(f"[ENERGY BALANCE DEBUG] ET_inst: min={np.nanmin(ET_inst):.4f}, max={np.nanmax(ET_inst):.4f}, mean={np.nanmean(ET_inst):.4f}")
 
         # Energy balance check: Rn - G - H - LE should be ~0
         residual = rn - G - H - LE
-        logger.info(f"[ENERGY BALANCE DEBUG] Residual (Rn-G-H-LE): min={np.nanmin(residual):.2f}, max={np.nanmax(residual):.2f}, mean={np.nanmean(residual):.2f}")
+        logger.debug(f"[ENERGY BALANCE DEBUG] Residual (Rn-G-H-LE): min={np.nanmin(residual):.2f}, max={np.nanmax(residual):.2f}, mean={np.nanmean(residual):.2f}")
 
         # Check for EF issues
         if np.nanmean(EF) > 0.95:

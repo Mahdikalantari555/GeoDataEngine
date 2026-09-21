@@ -650,7 +650,7 @@ class SensibleHeatFlux:
             logger.info(f"Calculated dT range: min={np.nanmin(dT):.3f}, max={np.nanmax(dT):.3f}")
             logger.info(f"Calculated H range: min={np.nanmin(H):.3f}, max={np.nanmax(H):.3f}")
             logger.info(f"Calculated RAH range: min={np.nanmin(rah):.3f}, max={np.nanmax(rah):.3f}")
-            logger.info(f"METRIC DEBUG: calibration_a={dt_a}, H_mean={np.nanmean(H):.2f}, RAH_mean={np.nanmean(rah):.2f}")
+            logger.debug(f"METRIC DEBUG: calibration_a={dt_a}, H_mean={np.nanmean(H):.2f}, RAH_mean={np.nanmean(rah):.2f}")
 
             # Check for calibration failure indicators
             if dt_a == 0.0:

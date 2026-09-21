@@ -151,10 +151,8 @@ class ProductOrganizer:
 
         if not products:
             logger.warning(f"No products found in {self.output_dir}")
-            logger.warning("DEBUG: Check if .tif files exist in subdirectories")
             # Debug: list all tif files found
             all_tifs = list(self.output_dir.rglob("*.tif"))
-            logger.warning(f"DEBUG: Total .tif files found in output_dir: {len(all_tifs)}")
             for tif in all_tifs[:10]:  # Show first 10
                 logger.warning(f"  - {tif}")
             return {}

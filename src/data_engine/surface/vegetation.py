@@ -3,6 +3,10 @@
 
 import numpy as np
 import xarray as xr
+from geospatial_core import evi as geo_evi
+from geospatial_core import ndvi as geo_ndvi
+from geospatial_core import ndwi as geo_ndwi
+from geospatial_core import savi as geo_savi
 
 from ..core.datacube import DataCube
 
@@ -192,14 +196,12 @@ class VegetationIndices:
         # Get nodata mask
         valid_mask = self._get_nodata_mask(cube)
 
-        # Compute NDVI
-        denominator = nir + red
-        # Avoid division by zero
-        with np.errstate(divide='ignore', invalid='ignore'):
-            ndvi = (nir - red) / denominator
+        # Compute NDVI via geospatial_core
+        raw_ndvi = geo_ndvi(nir.values, red.values)
+        ndvi = xr.DataArray(raw_ndvi, coords=red.coords, dims=red.dims)
 
         # Set invalid pixels to nodata
-        ndvi = ndvi.where(valid_mask & (denominator != 0), np.nan)
+        ndvi = ndvi.where(valid_mask, np.nan)
 
         # Clamp to valid range
         ndvi = ndvi.clip(-1.0, 1.0)
@@ -242,15 +244,12 @@ class VegetationIndices:
         # Get nodata mask
         valid_mask = self._get_nodata_mask(cube)
 
-        # Compute EVI with gain factor
-        numerator = 2.5 * (nir - red)
-        denominator = nir + 6.0 * red - 7.5 * blue + 1.0
-
-        with np.errstate(divide='ignore', invalid='ignore'):
-            evi = numerator / denominator
+        # Compute EVI via geospatial_core
+        raw_evi = geo_evi(nir.values, red.values, blue.values)
+        evi = xr.DataArray(raw_evi, coords=red.coords, dims=red.dims)
 
         # Set invalid pixels to nodata
-        evi = evi.where(valid_mask & (denominator != 0), np.nan)
+        evi = evi.where(valid_mask, np.nan)
 
         # Clamp to valid range [0, 1]
         evi = evi.clip(0.0, 1.0)
@@ -345,15 +344,13 @@ class VegetationIndices:
         # Get nodata mask
         valid_mask = self._get_nodata_mask(cube)
 
-        # Compute SAVI
+        # Compute SAVI via geospatial_core
         L = self.savi_l
-        denominator = nir + red + L
-
-        with np.errstate(divide='ignore', invalid='ignore'):
-            savi = ((nir - red) / denominator) * (1 + L)
+        raw_savi = geo_savi(red.values, nir.values, light_coeff=L)
+        savi = xr.DataArray(raw_savi, coords=red.coords, dims=red.dims)
 
         # Set invalid pixels to nodata
-        savi = savi.where(valid_mask & (denominator != 0), np.nan)
+        savi = savi.where(valid_mask, np.nan)
 
         # Clamp to reasonable range
         savi = savi.clip(-1.0, 1.0)
@@ -448,14 +445,12 @@ class VegetationIndices:
         # Get nodata mask
         valid_mask = self._get_nodata_mask(cube)
 
-        # Compute NDWI
-        denominator = green + nir
-        # Avoid division by zero
-        with np.errstate(divide='ignore', invalid='ignore'):
-            ndwi = (green - nir) / denominator
+        # Compute NDWI via geospatial_core
+        raw_ndwi = geo_ndwi(green.values, nir.values)
+        ndwi = xr.DataArray(raw_ndwi, coords=green.coords, dims=green.dims)
 
         # Set invalid pixels to nodata
-        ndwi = ndwi.where(valid_mask & (denominator != 0), np.nan)
+        ndwi = ndwi.where(valid_mask, np.nan)
 
         # Clamp to valid range
         ndwi = ndwi.clip(-1.0, 1.0)

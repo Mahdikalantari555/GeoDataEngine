@@ -13,6 +13,7 @@ authors = [{name = "GeoFoundation"}]
 keywords = ["evapotranspiration", "landsat", "sentinel", "remote-sensing", "energy-balance"]
 
 dependencies = [
+    "geodomain>=0.1.0",
     "numpy>=1.24",
     "scipy>=1.10",
     "pandas>=2.0",

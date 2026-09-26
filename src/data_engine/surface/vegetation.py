@@ -346,7 +346,7 @@ class VegetationIndices:
 
         # Compute SAVI via geospatial_core
         L = self.savi_l
-        raw_savi = geo_savi(red.values, nir.values, light_coeff=L)
+        raw_savi = geo_savi(nir.values, red.values, light_coeff=L)
         savi = xr.DataArray(raw_savi, coords=red.coords, dims=red.dims)
 
         # Set invalid pixels to nodata

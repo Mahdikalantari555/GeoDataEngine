@@ -198,7 +198,8 @@ class PlanetaryComputerLandsatFetcher:
         min_cloud_cover: float = 0.0,
         resolution: float = 30.0,
         sort_by: str = 'date',
-        min_coverage_ratio: float = 1
+        min_coverage_ratio: float = 1,
+        selected_ids: list[str] | None = None,
     ) -> list[dict]:
         """
         Fetch and download Landsat scenes clipped to ROI.
@@ -258,6 +259,14 @@ class PlanetaryComputerLandsatFetcher:
             full_coverage_items.sort(key=lambda item: item.datetime)
 
         logger.info(f"Found {len(full_coverage_items)} qualifying scenes with full coverage")
+
+        # Restrict to the scenes the caller actually selected (if any).
+        if selected_ids is not None:
+            wanted = {str(sid) for sid in selected_ids}
+            full_coverage_items = [item for item in full_coverage_items if str(item.id) in wanted]
+            if not full_coverage_items:
+                logger.info("None of the selected scenes matched the catalog; nothing to download")
+                return []
 
         # Download each scene
         results = []
@@ -1235,6 +1244,7 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
         resolution: float = 10.0,
         sort_by: str = "date",
         min_coverage_ratio: float = 0.55,
+        selected_ids: list[str] | None = None,
     ) -> list[dict]:
         """Fetch and download Sentinel-2 scenes from Planetary Computer.
 
@@ -1274,6 +1284,13 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
             full_coverage_items.sort(key=lambda it: it.datetime)
 
         logger.info(f"Found {len(full_coverage_items)} qualifying Sentinel-2 scenes")
+
+        if selected_ids is not None:
+            wanted = {str(sid) for sid in selected_ids}
+            full_coverage_items = [item for item in full_coverage_items if str(item.id) in wanted]
+            if not full_coverage_items:
+                logger.info("None of the selected scenes matched the catalog; nothing to download")
+                return []
 
         results: list[dict] = []
         for item in full_coverage_items:

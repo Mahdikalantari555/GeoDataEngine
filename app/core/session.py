@@ -115,6 +115,7 @@ class LiveEngineBridge:
                 min_cloud_cover=0.0,
                 sort_by=sort_by,
                 min_coverage_ratio=min_coverage_ratio,
+                selected_ids=selected_ids,
             )
         except Exception as exc:
             raise catalog.CatalogError(f"Download failed: {exc}") from exc

@@ -418,11 +418,15 @@ def generate_indices(
     params: dict[str, Any] | None = None,
     progress: ProgressCallback | None = None,
 ) -> list[GeneratedProduct]:
-    """Generate each requested index; a failure on one does not stop the rest.
+    """Generate each requested index.
+
+    Indices are validated up-front; a failure while generating one aborts the
+    whole run (fail-fast) rather than silently skipping it.
 
     Raises:
         UnsupportedIndexError: If an index is not valid for the scene's
             satellite (validated up-front, before any work is done).
+        SceneIndexError: If a required band is missing or generation fails.
     """
     canonical = [validate_index(name, scene.satellite) for name in indices]
     if not canonical:

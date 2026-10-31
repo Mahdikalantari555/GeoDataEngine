@@ -1069,33 +1069,26 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
                 logger.info(f"Downloading band {asset_key} from {asset_href[:80]}...")
 
                 import gc
-                import io
-                import urllib.request
 
-                # Download file to memory first using urllib (more reliable than rasterio for HTTP)
-                req = urllib.request.Request(
-                    asset_href,
-                    headers={'User-Agent': 'METRIC-ETa/1.0'}
-                )
-                with urllib.request.urlopen(req) as response:
-                    data_bytes = response.read()
+                # Open the remote COG directly and read only the ROI window.
+                # This uses HTTP range requests, so only the clipped pixels are
+                # transferred (no full-band download).
+                from rasterio.windows import from_bounds
 
-                # Read from bytes buffer - this is the key to avoiding WinError 32
-                # We never keep a file handle open from rasterio's perspective
-                with rasterio.open(io.BytesIO(data_bytes)) as src:
+                with rasterio.open(asset_href) as src:
                     src_crs = src.crs
                     src_transform = src.transform
 
-                    from rasterio.windows import from_bounds
-                    window = from_bounds(utm_bounds[0], utm_bounds[1],
-                                        utm_bounds[2], utm_bounds[3], src_transform)
+                    window = from_bounds(
+                        utm_bounds[0], utm_bounds[1],
+                        utm_bounds[2], utm_bounds[3],
+                        src_transform,
+                    )
 
                     data = src.read(1, window=window)
                     out_transform = src.window_transform(window)
                     nodata_val = src.nodata
 
-                # Delete the bytes to free memory
-                del data_bytes
                 gc.collect()
 
                 # Reproject if needed

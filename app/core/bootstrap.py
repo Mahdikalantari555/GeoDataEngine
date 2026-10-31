@@ -406,10 +406,19 @@ def resolve_base_python(app_root: Path | str) -> str:
     if not getattr(sys, "frozen", False):
         return sys.executable
 
+    # Frozen build: fall back to any interpreter discoverable on PATH so a
+    # system Python (e.g. the one the user already installed) can be used.
+    import shutil
+
+    for candidate_name in ("python.exe", "python3.exe", "python", "python3", "py"):
+        found = shutil.which(candidate_name)
+        if found:
+            return found
+
     raise BootstrapError(
         "No Python interpreter available to create the virtual environment. "
-        "Place a portable Python in the 'python' folder next to the application "
-        "or set GEODATAENGINE_PYTHON."
+        "Place a portable Python in the 'python' folder next to the application, "
+        "add Python to PATH, or set GEODATAENGINE_PYTHON."
     )
 
 

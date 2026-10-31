@@ -39,6 +39,10 @@ ENGINE_MODULES = [
 DATA_FILES = [
     (str(APP_DIR / "requirements.txt"), "."),
     (str(APP_DIR / "requirements-full.txt"), "."),
+    # Ship the engine source so engine_loader can fall back to direct imports
+    # in a frozen build (PyInstaller otherwise only stores compiled modules).
+    (str(SRC_DIR), "."),
+    (str(APP_DIR), "app"),
 ]
 
 ANALYSIS = Analysis(  # noqa: F821 - injected by PyInstaller

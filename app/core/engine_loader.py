@@ -140,14 +140,16 @@ def engine_module(dotted: str) -> ModuleType:
     try:
         return importlib.import_module(dotted)
     except ImportError as exc:
+        original = exc
         if not _is_optional_dependency_error(exc):
             raise
         try:
             return _direct_import(dotted)
         except ImportError as direct_exc:
             raise EngineImportError(
-                f"Cannot import {dotted} on the light stack: {direct_exc}"
-            ) from direct_exc
+                f"Cannot import {dotted} on the light stack: {direct_exc} "
+                f"(original error: {original})"
+            ) from original
 
 
 def lite_stack_active() -> bool:

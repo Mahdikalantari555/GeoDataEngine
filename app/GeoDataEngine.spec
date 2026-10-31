@@ -24,6 +24,8 @@ machine.
 
 from pathlib import Path
 
+from PyInstaller.utils.hooks import collect_all
+
 REPO_ROOT = Path(SPECPATH).resolve().parent          # noqa: F821 - injected by PyInstaller
 APP_DIR = REPO_ROOT / "app"
 SRC_DIR = REPO_ROOT / "src"
@@ -45,12 +47,17 @@ DATA_FILES = [
     (str(APP_DIR), "app"),
 ]
 
+# Collect rasterio fully: its submodules (e.g. rasterio.serde) and native
+# binaries/data are required at runtime but are not always auto-detected.
+_rasterio_datas, _rasterio_binaries, _rasterio_hidden = collect_all("rasterio")
+_planetary_datas, _planetary_binaries, _planetary_hidden = collect_all("planetary_computer")
+
 ANALYSIS = Analysis(  # noqa: F821 - injected by PyInstaller
     [str(REPO_ROOT / "main.py")],
     pathex=[str(REPO_ROOT), str(SRC_DIR)],
-    binaries=[],
-    datas=DATA_FILES,
-    hiddenimports=ENGINE_MODULES
+    binaries=_rasterio_binaries + _planetary_binaries,
+    datas=DATA_FILES + _rasterio_datas + _planetary_datas,
+    hiddenimports=ENGINE_MODULES + _rasterio_hidden + _planetary_hidden
     + [
         "tkinter",
         "tkinter.filedialog",

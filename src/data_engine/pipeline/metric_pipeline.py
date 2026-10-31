@@ -5,6 +5,7 @@ from datetime import datetime
 from typing import Any
 
 import numpy as np
+import rioxarray  # noqa: F401 - registers .rio accessor on xarray
 import xarray as xr
 from loguru import logger
 

@@ -15,3 +15,5 @@ examples/*.png
 .venv/
 .codebase-memory/
 .mimocode/src/data_engine.egg-info/
+src/data_engine.egg-info/
+sample_outputs/

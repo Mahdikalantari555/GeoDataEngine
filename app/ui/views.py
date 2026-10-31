@@ -16,6 +16,7 @@ scenes qualify, where products are written, what a preset contains) belongs to
 from __future__ import annotations
 
 import contextlib
+import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -192,7 +193,8 @@ class DesktopApp:
         if menu is None:  # toolkit without menus (fake) — Help button still works
             return
         menu.add_command(label="Help", command=self.open_help)
-        menu.add_command(label="Enable full processing", command=self.enable_full_processing)
+        if not getattr(sys, "frozen", False):
+            menu.add_command(label="Enable full processing", command=self.enable_full_processing)
         with contextlib.suppress(Exception):  # pragma: no cover - window without a menu
             self.root.configure(menu=getattr(menu, "widget", menu))
 
@@ -445,6 +447,9 @@ class DesktopApp:
             buttons, text="Enable full processing", command=self.enable_full_processing
         )
         self.enable_full_button.pack(side="left")
+        if getattr(sys, "frozen", False):
+            self.enable_full_button.configure(state="disabled")
+            self.enable_full_button.configure(text="Full processing (source install only)")
         self.tk.Button(buttons, text="Prepare environment", command=self.prepare_environment).pack(
             side="left", padx=6
         )

@@ -3,10 +3,10 @@
 
 import numpy as np
 import xarray as xr
-from geospatial_core import evi as geo_evi
-from geospatial_core import ndvi as geo_ndvi
-from geospatial_core import ndwi as geo_ndwi
-from geospatial_core import savi as geo_savi
+from .._vendor.geospatial_core import evi as geo_evi
+from .._vendor.geospatial_core import ndvi as geo_ndvi
+from .._vendor.geospatial_core import ndwi as geo_ndwi
+from .._vendor.geospatial_core import savi as geo_savi
 
 from ..core.datacube import DataCube
 

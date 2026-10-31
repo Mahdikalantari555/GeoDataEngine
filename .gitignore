@@ -14,4 +14,4 @@ examples/*.png
 .vscode/
 .venv/
 .codebase-memory/
-.mimocode/
+.mimocode/src/data_engine.egg-info/

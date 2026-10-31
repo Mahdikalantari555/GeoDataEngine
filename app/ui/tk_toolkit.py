@@ -157,6 +157,9 @@ class TkToolkit:
     def Treeview(self, master: Any = None, **kwargs: Any) -> TkWidget:
         return TkWidget(ttk.Treeview(_real(master) or self.root, **kwargs))
 
+    def Notebook(self, master: Any = None, **kwargs: Any) -> TkWidget:
+        return TkWidget(ttk.Notebook(_real(master) or self.root, **kwargs))
+
     def Progressbar(self, master: Any = None, **kwargs: Any) -> TkProgressbar:
         kwargs.setdefault("maximum", 1.0)
         return TkProgressbar(ttk.Progressbar(_real(master) or self.root, **kwargs))
@@ -166,6 +169,9 @@ class TkToolkit:
 
     def Scale(self, master: Any = None, **kwargs: Any) -> TkWidget:
         return TkWidget(tk.Scale(_real(master) or self.root, **kwargs))
+
+    def Menu(self, master: Any = None, **kwargs: Any) -> TkWidget:
+        return TkWidget(tk.Menu(_real(master) or self.root, **kwargs))
 
     # -- variables -----------------------------------------------------
     def StringVar(self, value: Any = "") -> tk.StringVar:

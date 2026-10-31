@@ -17,3 +17,5 @@ examples/*.png
 .mimocode/src/data_engine.egg-info/
 src/data_engine.egg-info/
 sample_outputs/
+dist/
+build/

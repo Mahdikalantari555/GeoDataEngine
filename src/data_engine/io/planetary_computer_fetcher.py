@@ -14,7 +14,6 @@ from pathlib import Path
 import numpy as np
 import rasterio
 import requests
-import stackstac
 from pyproj import Transformer
 from pystac_client import Client
 from shapely.geometry import box
@@ -39,6 +38,18 @@ from .errors import (
 # stackstac calls np.can_cast(1, dtype) with Python scalars which now raises TypeError.
 # Patch globally so both stackstac.prepare and stackstac.to_dask work without pinning numpy.
 _original_can_cast = np.can_cast
+
+
+def _import_stackstac():
+    """Import stackstac lazily.
+
+    stackstac pulls in xarray/dask, which the desktop GUI's "lite" stack does
+    not install.  Only the Landsat band download needs it; searching the
+    catalog and downloading Sentinel-2 bands use rasterio/pystac directly.
+    """
+    import stackstac
+
+    return stackstac
 
 
 def _patched_can_cast(from_, to, casting="safe"):  # type: ignore
@@ -187,7 +198,8 @@ class PlanetaryComputerLandsatFetcher:
         min_cloud_cover: float = 0.0,
         resolution: float = 30.0,
         sort_by: str = 'date',
-        min_coverage_ratio: float = 1
+        min_coverage_ratio: float = 1,
+        selected_ids: list[str] | None = None,
     ) -> list[dict]:
         """
         Fetch and download Landsat scenes clipped to ROI.
@@ -247,6 +259,14 @@ class PlanetaryComputerLandsatFetcher:
             full_coverage_items.sort(key=lambda item: item.datetime)
 
         logger.info(f"Found {len(full_coverage_items)} qualifying scenes with full coverage")
+
+        # Restrict to the scenes the caller actually selected (if any).
+        if selected_ids is not None:
+            wanted = {str(sid) for sid in selected_ids}
+            full_coverage_items = [item for item in full_coverage_items if str(item.id) in wanted]
+            if not full_coverage_items:
+                logger.info("None of the selected scenes matched the catalog; nothing to download")
+                return []
 
         # Download each scene
         results = []
@@ -538,7 +558,9 @@ class PlanetaryComputerLandsatFetcher:
         max_x, max_y = transformer.transform(bbox[2], bbox[3])
         utm_bounds = (min_x, min_y, max_x, max_y)
 
-        # Use stackstac for efficient streaming and clipping
+        # Use stackstac for efficient streaming and clipping (imported lazily: it
+        # needs xarray/dask, which the GUI's lite stack does not install).
+        stackstac = _import_stackstac()
         asset_keys = [b for b in self.bands if b in signed_item.assets]
 
         if not asset_keys:
@@ -1222,6 +1244,7 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
         resolution: float = 10.0,
         sort_by: str = "date",
         min_coverage_ratio: float = 0.55,
+        selected_ids: list[str] | None = None,
     ) -> list[dict]:
         """Fetch and download Sentinel-2 scenes from Planetary Computer.
 
@@ -1261,6 +1284,13 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
             full_coverage_items.sort(key=lambda it: it.datetime)
 
         logger.info(f"Found {len(full_coverage_items)} qualifying Sentinel-2 scenes")
+
+        if selected_ids is not None:
+            wanted = {str(sid) for sid in selected_ids}
+            full_coverage_items = [item for item in full_coverage_items if str(item.id) in wanted]
+            if not full_coverage_items:
+                logger.info("None of the selected scenes matched the catalog; nothing to download")
+                return []
 
         results: list[dict] = []
         for item in full_coverage_items:

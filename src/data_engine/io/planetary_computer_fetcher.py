@@ -254,7 +254,7 @@ class PlanetaryComputerLandsatFetcher:
         if not full_coverage_items:
             raise NoSceneFoundError("No scenes found with full ROI coverage")
         if sort_by == 'cloud_cover':
-            full_coverage_items.sort(key=lambda item: item.properties.get('cloud_cover', 100.0))
+            full_coverage_items.sort(key=lambda item: item.properties.get('eo:cloud_cover', item.properties.get('cloud_cover', 100.0)))
         else:
             full_coverage_items.sort(key=lambda item: item.datetime)
 
@@ -309,7 +309,7 @@ class PlanetaryComputerLandsatFetcher:
             results.append({
                 "scene_id": item.id,
                 "date": scene_date,
-                "cloud_cover": item.properties.get('eo:cloud_cover'),
+                "cloud_cover": item.properties.get('eo:cloud_cover', item.properties.get('cloud_cover', 0.0)),
                 "path": path,
                 "row": row,
                 "directory": str(scene_dir),
@@ -388,7 +388,7 @@ class PlanetaryComputerLandsatFetcher:
         # Convert to metadata dicts
         results = []
         for item in items:
-            cloud_cover = item.properties.get('cloud_cover', 0.0)
+            cloud_cover = item.properties.get('eo:cloud_cover', item.properties.get('cloud_cover', 0.0))
             if cloud_cover <= self.max_cloud_cover:
                 results.append({
                     'id': item.id,
@@ -466,7 +466,7 @@ class PlanetaryComputerLandsatFetcher:
         # Filter by cloud cover - ensure we don't exceed max_cloud_cover
         filtered = []
         for item in items:
-            cloud_cover = item.properties.get('cloud_cover', 0.0)
+            cloud_cover = item.properties.get('eo:cloud_cover', item.properties.get('cloud_cover', 0.0))
             if cloud_cover <= self.max_cloud_cover:
                 filtered.append(item)
             else:
@@ -664,7 +664,7 @@ class PlanetaryComputerLandsatFetcher:
         """
         scene_id = item.id
         scene_date = item.properties["datetime"][:10]
-        cloud_cover = item.properties.get('eo:cloud_cover', 0.0)
+        cloud_cover = item.properties.get('eo:cloud_cover', item.properties.get('cloud_cover', 0.0))
         path = item.properties.get('landsat:wrs_path')
         row = item.properties.get('landsat:wrs_row')
         sun_elevation = item.properties.get("view:sun_elevation")
@@ -917,6 +917,8 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
         'nir08': 'B08',
         'swir16': 'B11',
         'swir22': 'B12',
+        'qa60': 'QA60',
+        'scl': 'SCL',
     }
 
     def __init__(
@@ -927,7 +929,7 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
         source_crs: str = "EPSG:4326",
     ) -> None:
         # Use internal band names (blue, green, …) as the primary band list.
-        required = ['blue', 'green', 'red', 'nir08']
+        required = ['blue', 'green', 'red', 'nir08', 'swir16', 'swir22', 'qa60', 'scl']
         super().__init__(
             collection=collection,
             bands=bands or required,
@@ -963,7 +965,7 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
 
         results = []
         for item in items:
-            cloud_cover = item.properties.get('cloud_cover', 0.0)
+            cloud_cover = item.properties.get('eo:cloud_cover', item.properties.get('cloud_cover', 0.0))
             if cloud_cover <= self.max_cloud_cover:
                 results.append({
                     'id': item.id,
@@ -1131,7 +1133,7 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
         """Create an MTL.json from Sentinel-2 STAC properties."""
         scene_id = item.id
         scene_date = item.properties["datetime"][:10]
-        cloud_cover = item.properties.get('cloud_cover', 0.0)
+        cloud_cover = item.properties.get('eo:cloud_cover', item.properties.get('cloud_cover', 0.0))
         platform = item.properties.get('platform', 'sentinel-2')
         sensor = item.properties.get('instruments', ['MSI'])[0] if item.properties.get('instruments') else 'MSI'
         sun_elev = item.properties.get("view:sun_elevation")
@@ -1218,7 +1220,7 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
             raise NoSceneFoundError("No Sentinel-2 scenes found with full ROI coverage")
 
         if sort_by == "cloud_cover":
-            full_coverage_items.sort(key=lambda it: it.properties.get("cloud_cover", 100.0))
+            full_coverage_items.sort(key=lambda it: it.properties.get("eo:cloud_cover", it.properties.get("cloud_cover", 100.0)))
         else:
             full_coverage_items.sort(key=lambda it: it.datetime)
 
@@ -1250,7 +1252,7 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
             results.append({
                 "scene_id": item.id,
                 "date": item.datetime.strftime("%Y-%m-%d") if item.datetime else scene_date,
-                "cloud_cover": item.properties.get("eo:cloud_cover") or item.properties.get("cloud_cover", 0.0),
+                "cloud_cover": item.properties.get("eo:cloud_cover", item.properties.get("cloud_cover", 0.0)),
                 "directory": str(scene_dir),
                 "bands_downloaded": len(downloaded_files),
                 "mtl_file": str(mtl_path),

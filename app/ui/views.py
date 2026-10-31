@@ -194,14 +194,14 @@ class DesktopApp:
         menu.add_command(label="Help", command=self.open_help)
         menu.add_command(label="Enable full processing", command=self.enable_full_processing)
         with contextlib.suppress(Exception):  # pragma: no cover - window without a menu
-            self.root.configure(menu=menu)
+            self.root.configure(menu=getattr(menu, "widget", menu))
 
     # -- Search tab ----------------------------------------------------
     def _build_search_tab(self, master: Any) -> None:
         tab = self.tk.Frame(master)
         tab.pack(fill="both", expand=True)
         if hasattr(self.notebook, "add"):
-            self.notebook.add(tab, text="Search")
+            self.notebook.add(getattr(tab, "widget", tab), text="Search")
         self.search_tab = tab
 
         form = self.tk.LabelFrame(tab, text="Search criteria")
@@ -304,7 +304,7 @@ class DesktopApp:
         tab = self.tk.Frame(master)
         tab.pack(fill="both", expand=True)
         if hasattr(self.notebook, "add"):
-            self.notebook.add(tab, text="Download")
+            self.notebook.add(getattr(tab, "widget", tab), text="Download")
         self.download_tab = tab
 
         head = self.tk.LabelFrame(tab, text="Downloads")
@@ -343,7 +343,7 @@ class DesktopApp:
         tab = self.tk.Frame(master)
         tab.pack(fill="both", expand=True)
         if hasattr(self.notebook, "add"):
-            self.notebook.add(tab, text="Indices")
+            self.notebook.add(getattr(tab, "widget", tab), text="Indices")
         self.indices_tab = tab
 
         scene_box = self.tk.LabelFrame(tab, text="Downloaded scenes (Ctrl-click for batch)")
@@ -396,7 +396,7 @@ class DesktopApp:
         tab = self.tk.Frame(master)
         tab.pack(fill="both", expand=True)
         if hasattr(self.notebook, "add"):
-            self.notebook.add(tab, text="Settings")
+            self.notebook.add(getattr(tab, "widget", tab), text="Settings")
         self.settings_tab = tab
 
         box = self.tk.LabelFrame(tab, text="Defaults")

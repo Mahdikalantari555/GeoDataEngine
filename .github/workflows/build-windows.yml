@@ -1,0 +1,41 @@
+name: Build Windows GUI
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "app/**"
+      - "src/**"
+      - "main.py"
+      - "main.pyw"
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install build deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r app/requirements.txt
+
+      - name: Build
+        run: pyinstaller app/GeoDataEngine.spec --noconfirm --clean
+
+      - name: Smoke test (import)
+        run: dist\GeoDataEngine\GeoDataEngine.exe --version
+        shell: pwsh
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GeoDataEngine-windows
+          path: dist/GeoDataEngine/
+          retention-days: 30

@@ -525,22 +525,13 @@ class PlanetaryComputerLandsatFetcher:
         resolution: float = 30.0,
         min_coverage_ratio: float = 0.55
     ) -> dict[str, Path]:
-        """Download and clip bands to GeoTIFF files using stackstac.
+        """Download and clip Landsat bands using rasterio directly.
 
-        Args:
-            item: STAC item (signed or unsigned)
-            bbox: [min_lon, min_lat, max_lon, max_lat] in WGS84
-            output_dir: Directory to save output files
-            resolution: Output resolution in meters
-            min_coverage_ratio: Minimum valid pixel coverage ratio (default: 0.55 = 55%)
-
-        Returns:
-            Dictionary mapping band names to file paths
-
-        Raises:
-            DownloadError: If scene has insufficient valid pixel coverage
+        Bands are saved as ``<internal_name>.tif`` (e.g. ``red.tif``) so that
+        the downstream pipeline can load them by their internal METRIC name.
+        This uses rasterio's windowed reading (HTTP range requests) and does
+        not require stackstac, so it works on the "lite" dependency stack.
         """
-        # Sign the item
         try:
             import planetary_computer
             signed_item = planetary_computer.sign(item)
@@ -549,165 +540,113 @@ class PlanetaryComputerLandsatFetcher:
             logger.error(f"Failed to sign item {item.id}: {e}")
             raise AuthenticationError(f"MPC authentication failed for item {item.id}: {e}") from e
 
-        # Calculate UTM EPSG for the bbox
         utm_epsg = self._get_utm_epsg(bbox)
-
-        # Transform bbox to UTM coordinates
         transformer = Transformer.from_crs("EPSG:4326", f"EPSG:{utm_epsg}", always_xy=True)
         min_x, min_y = transformer.transform(bbox[0], bbox[1])
         max_x, max_y = transformer.transform(bbox[2], bbox[3])
         utm_bounds = (min_x, min_y, max_x, max_y)
 
-        # Use stackstac for efficient streaming and clipping (imported lazily: it
-        # needs xarray/dask, which the GUI's lite stack does not install).
-        stackstac = _import_stackstac()
         asset_keys = [b for b in self.bands if b in signed_item.assets]
-
         if not asset_keys:
             raise DownloadError(f"No required bands found in item {item.id}")
 
-        stack = stackstac.stack(
-            signed_item,
-            assets=asset_keys,
-            resolution=resolution,
-            epsg=utm_epsg,
-            bounds=utm_bounds,
-            chunksize=256 * 1024 * 1024  # 256 MB
-        )
+        downloaded_files: dict[str, Path] = {}
+        asset_to_internal = {k: k for k in self.bands}
 
-        # Compute and save each band as GeoTIFF using rasterio
-        stack = stack.compute()
+        for asset_key in asset_keys:
+            try:
+                asset_href = signed_item.assets[asset_key].href
+                logger.info(f"Downloading band {asset_key} from {asset_href[:80]}...")
 
-        downloaded_files = {}
-        item.datetime.strftime('%Y%m%d')
+                import gc
 
-        # Get the transform and shape from the stack
-        # stackstac returns (band, y, x) or (time, band, y, x)
-        if 'band' in stack.dims:
-            pass
-        elif 'x' in stack.dims and 'y' in stack.dims:
-            # Single band case - need to check
-            pass
+                from rasterio.windows import from_bounds
 
-        # Get the crs and transform
-        # Stackstac should have these as attributes
-        crs = stack.crs if hasattr(stack, 'crs') and stack.crs is not None else f"EPSG:{utm_epsg}"
+                with rasterio.open(asset_href) as src:
+                    src_crs = src.crs
+                    src_transform = src.transform
 
-        # Get transform from stack's transform attribute or compute it
-        if hasattr(stack, 'transform') and stack.transform is not None:
-            transform = stack.transform
-        else:
-            # Compute transform from bounds and shape
-            # Handle different possible dimension names
-            height = stack.sizes.get('y') or stack.sizes.get('latitude') or stack.sizes.get('band')
-            width = stack.sizes.get('x') or stack.sizes.get('longitude')
+                    window = from_bounds(
+                        utm_bounds[0], utm_bounds[1],
+                        utm_bounds[2], utm_bounds[3],
+                        src_transform,
+                    )
 
-            # If we have band dimension, we need y and x specifically
-            if 'y' in stack.sizes:
-                height = stack.sizes['y']
-            elif 'latitude' in stack.sizes:
-                height = stack.sizes['latitude']
-            else:
-                # Use the last dimension size as height
-                height = list(stack.sizes.values())[-1]
+                    data = src.read(1, window=window)
+                    out_transform = src.window_transform(window)
+                    nodata_val = src.nodata
 
-            if 'x' in stack.sizes:
-                width = stack.sizes['x']
-            elif 'longitude' in stack.sizes:
-                width = stack.sizes['longitude']
-            else:
-                # Use the second to last dimension size as width
-                width = list(stack.sizes.values())[-2]
+                gc.collect()
 
-            if height and width:
-                transform = rasterio.transform.from_bounds(
-                    utm_bounds[0], utm_bounds[1],  # left, bottom
-                    utm_bounds[2], utm_bounds[3],  # right, top
-                    width, height
-                )
-            else:
-                raise DownloadError(f"Could not determine stack dimensions: {stack.sizes}")
+                out_crs = f"EPSG:{utm_epsg}"
+                if str(src_crs) != out_crs:
+                    from rasterio.warp import (
+                        Resampling,
+                        calculate_default_transform,
+                        reproject,
+                    )
+                    dst_transform, dst_width, dst_height = calculate_default_transform(
+                        src_crs, out_crs,
+                        data.shape[1], data.shape[0],
+                        utm_bounds[0], utm_bounds[1], utm_bounds[2], utm_bounds[3]
+                    )
+                    dst_data = np.zeros((dst_height, dst_width), dtype=data.dtype)
+                    reproject(
+                        source=data, destination=dst_data,
+                        src_transform=out_transform, src_crs=src_crs,
+                        dst_transform=dst_transform, dst_crs=out_crs,
+                        resampling=Resampling.bilinear
+                    )
+                    data = dst_data
+                    out_transform = dst_transform
 
-        for band in stack.band.values:
-            band_data = stack.sel(band=band)
+                internal_name = asset_to_internal.get(asset_key, asset_key)
+                out_path = output_dir / f"{internal_name}.tif"
 
-            # Get the data as numpy array
-            data = band_data.values
+                with rasterio.open(
+                    out_path, 'w',
+                    driver='GTiff',
+                    height=data.shape[0], width=data.shape[1],
+                    count=1, dtype=data.dtype,
+                    crs=out_crs, transform=out_transform,
+                    compress='lzw', nodata=nodata_val,
+                ) as dst:
+                    dst.write(data.astype(data.dtype), 1)
 
-            # Handle multi-dimensional data - squeeze to 2D if needed
-            # stackstac may return (y, x) or could have extra dimensions
-            if data.ndim > 2:
-                # Squeeze any single-dimensional axes (like time=1)
-                data = np.squeeze(data)
-                # If still more than 2D, take the last 2 dimensions
-                if data.ndim > 2:
-                    data = data.reshape(-1, data.shape[-1])
+                downloaded_files[internal_name] = out_path
+                logger.info(f"Saved Landsat band {internal_name} -> {out_path}")
 
-            filename = f"{band}.tif"
-            output_path = output_dir / filename
+                del data
+                gc.collect()
 
-            # Write using rasterio directly
-            height, width = data.shape
-            with rasterio.open(
-                output_path,
-                'w',
-                driver='GTiff',
-                height=height,
-                width=width,
-                count=1,
-                dtype=data.dtype,
-                crs=crs,
-                transform=transform,
-                compress='lzw'
-            ) as dst:
-                dst.write(data, 1)
+            except Exception as e:
+                logger.warning(f"Failed to download band {asset_key}: {e}")
+                continue
 
-            downloaded_files[str(band)] = output_path
-            logger.info(f"Saved {band} to {output_path}")
+        if not downloaded_files:
+            raise DownloadError(f"No bands could be downloaded for {item.id}")
 
-        # ------------------------------------------------------------
-        # CHECK AOI COVERAGE RATIO AFTER DOWNLOAD
-        # ------------------------------------------------------------
-        # Verify that the downloaded scene actually covers the ROI with valid pixels
-        # This handles cases where STAC geometry says it covers but actual pixels are nodata
-
-        # Use red band to check coverage (commonly available and representative)
+        # Coverage check
         red_band_path = downloaded_files.get('red')
         if red_band_path and red_band_path.exists():
             with rasterio.open(red_band_path) as src:
-                red_data = src.read(1)
-                nodata_value = src.nodata if src.nodata is not None else -9999
-
-                # Create mask of valid pixels (not nodata)
-                valid_mask = (red_data != nodata_value)
-
-                # Also check for zero or negative values which may indicate no data
-                # Landsat Collection 2 Level-2 surface reflectance should be positive
-                valid_mask = valid_mask & (red_data > 0)
-
-                total_pixels = valid_mask.size
-                valid_pixels = np.count_nonzero(valid_mask)
-
-                if total_pixels > 0:
-                    coverage_ratio = valid_pixels / total_pixels
-                    logger.info(f"Valid coverage ratio for {item.id}: {coverage_ratio:.3f} ({valid_pixels}/{total_pixels} pixels)")
-
-                    if coverage_ratio < min_coverage_ratio:
-                        logger.warning(
-                            f"Scene {item.id} skipped: insufficient AOI coverage "
-                            f"({coverage_ratio:.1%} < {min_coverage_ratio:.1%})"
-                        )
-                        # Clean up downloaded files
+                arr = src.read(1)
+                nodata = src.nodata if src.nodata is not None else -9999
+                valid = (arr != nodata) & (arr > 0)
+                total = valid.size
+                valid_count = int(np.count_nonzero(valid))
+                if total > 0:
+                    ratio = valid_count / total
+                    logger.info(f"Valid coverage for {item.id}: {ratio:.3f} ({valid_count}/{total} pixels)")
+                    if ratio < min_coverage_ratio:
                         for f in downloaded_files.values():
                             if f and f.exists():
                                 with contextlib.suppress(BaseException):
                                     f.unlink()
                         raise DownloadError(
                             f"Scene {item.id} has insufficient valid pixel coverage "
-                            f"({coverage_ratio:.1%} < {min_coverage_ratio:.1%})"
+                            f"({ratio:.1%} < {min_coverage_ratio:.1%})"
                         )
-                else:
-                    logger.warning(f"Could not determine coverage for {item.id}: no pixels found")
         else:
             logger.warning("Could not check coverage: red band not available")
 

@@ -42,7 +42,7 @@ SENTINEL_ONLY_INDICES: tuple[str, ...] = ("OPTRAM",)
 #: Sorting options offered in the Search tab.
 SORT_OPTIONS: tuple[str, ...] = ("date", "cloud_cover")
 
-DEFAULT_MIRROR_URL = "https://pypi.tuna.tsinghua.edu.cn/simple"
+DEFAULT_MIRROR_URL = "https://mirror-pypi.runflare.com/simple"
 
 
 def app_dir() -> Path:

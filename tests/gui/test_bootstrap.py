@@ -158,9 +158,9 @@ class TestInstallEssentials:
         boot.install_essentials()
         install = runner.commands[-1]
         assert "--index-url" in install
-        assert "https://pypi.tuna.tsinghua.edu.cn/simple" in install
+        assert "https://mirror-pypi.runflare.com/simple" in install
         assert "--trusted-host" in install
-        assert install[install.index("--trusted-host") + 1] == "pypi.tuna.tsinghua.edu.cn"
+        assert install[install.index("--trusted-host") + 1] == "mirror-pypi.runflare.com"
         assert "-r" in install
         assert install[-1].endswith("requirements.txt")
 

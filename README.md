@@ -35,6 +35,10 @@ src/data_engine/
   weather/         Meteorological data interpolation and fetchers
   validation/      Energy balance closure and flux sanity checks
   cli/             Click CLI command interface (`data-engine`)
+
+app/                 Tkinter desktop GUI (search / download / indices / settings)
+  core/              toolkit-free logic: config, ROI, indices, presets, bootstrap
+  ui/                Tkinter views plus the testable toolkit abstraction
 ```
 
 ## Installation
@@ -47,8 +51,9 @@ conda run -n geospatial pip install -e libs/data_engine
 
 Optional extras:
 ```bash
-conda run -n geospatial pip install -e "libs/data_engine[rs]"   # plotting, cartopy, sentinelsat
-conda run -n geospatial pip install -e "libs/data_engine[dev]"  # pytest, pytest-cov
+pip install -e ".[gui]"   # pyshp, for the desktop GUI's Shapefile support
+pip install -e ".[rs]"    # plotting, cartopy, sentinelsat
+pip install -e ".[dev]"   # pytest, pytest-cov
 ```
 
 ## Python API Usage
@@ -83,6 +88,24 @@ data-engine run-metric \
   --output /path/to/output/ \
   --roi /path/to/field.geojson
 ```
+
+
+## Desktop GUI
+
+`app/` provides a Tkinter desktop app for users who do not want a terminal:
+STAC search over Planetary Computer, ROI-clipped downloads, spectral indices
+and optional METRIC presets, with a self-bootstrapping `.venv`.
+
+```bash
+python -m app.main            # first run creates .venv and installs essentials
+python -m app.main --version  # print the version
+python -m app.main --help     # all launcher flags
+```
+
+See [`app/README.md`](app/README.md) for the first-run flow, the mirror
+fallback, the portable-folder packaging (`pyinstaller app/GeoDataEngine.spec`)
+and the output layout. The GUI reuses the engine's fetchers and vendored
+spectral helpers and never requires a conda environment.
 
 ## Invariants & Design Principles
 

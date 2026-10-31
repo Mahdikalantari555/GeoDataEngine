@@ -14,7 +14,6 @@ from pathlib import Path
 import numpy as np
 import rasterio
 import requests
-import stackstac
 from pyproj import Transformer
 from pystac_client import Client
 from shapely.geometry import box
@@ -39,6 +38,18 @@ from .errors import (
 # stackstac calls np.can_cast(1, dtype) with Python scalars which now raises TypeError.
 # Patch globally so both stackstac.prepare and stackstac.to_dask work without pinning numpy.
 _original_can_cast = np.can_cast
+
+
+def _import_stackstac():
+    """Import stackstac lazily.
+
+    stackstac pulls in xarray/dask, which the desktop GUI's "lite" stack does
+    not install.  Only the Landsat band download needs it; searching the
+    catalog and downloading Sentinel-2 bands use rasterio/pystac directly.
+    """
+    import stackstac
+
+    return stackstac
 
 
 def _patched_can_cast(from_, to, casting="safe"):  # type: ignore
@@ -538,7 +549,9 @@ class PlanetaryComputerLandsatFetcher:
         max_x, max_y = transformer.transform(bbox[2], bbox[3])
         utm_bounds = (min_x, min_y, max_x, max_y)
 
-        # Use stackstac for efficient streaming and clipping
+        # Use stackstac for efficient streaming and clipping (imported lazily: it
+        # needs xarray/dask, which the GUI's lite stack does not install).
+        stackstac = _import_stackstac()
         asset_keys = [b for b in self.bands if b in signed_item.assets]
 
         if not asset_keys:

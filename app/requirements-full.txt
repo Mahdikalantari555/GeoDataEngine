@@ -1,0 +1,19 @@
+# GeoDataEngine Desktop — full processing ("heavy") stack
+#
+# Installed into the same .venv by the "Enable full processing" button.  Adds
+# what the METRIC ETa pipeline needs (data_engine.pipeline.METRICPipeline).
+# The essentials from requirements.txt stay installed.
+
+-r requirements.txt
+
+stackstac>=0.5
+scipy>=1.10
+pandas>=2.0
+xarray>=2023.1
+rioxarray>=0.14
+geopandas>=0.14
+fiona>=1.9
+matplotlib>=3.7
+click>=8.1
+pyyaml>=6.0
+tqdm>=4.65

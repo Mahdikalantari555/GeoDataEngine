@@ -52,9 +52,35 @@ class TestCollectionFor:
     def test_sentinel_collection(self):
         assert catalog.collection_for("sentinel-2") == "sentinel-2-l2a"
 
+    def test_sentinel1_collection(self):
+        assert catalog.collection_for("sentinel-1") == "sentinel-1-grd"
+
     def test_unknown_satellite(self):
         with pytest.raises(catalog.CatalogError, match="Unsupported satellite"):
             catalog.collection_for("modis")
+
+
+class TestCloudAvailability:
+    """Sentinel-1 is a SAR mission: it has no cloud-cover property at all."""
+
+    @pytest.mark.parametrize("satellite", ["landsat-8", "landsat-9", "sentinel-2"])
+    def test_optical_satellites_publish_cloud_cover(self, satellite):
+        assert catalog.has_cloud_cover(satellite) is True
+
+    def test_sentinel1_has_no_cloud_cover(self):
+        assert catalog.has_cloud_cover("sentinel-1") is False
+
+    def test_sentinel1_summary_blanks_the_cloud_column(self, roi):
+        item = scene_item(cloud=0.0)
+        item["platform"] = "sentinel-1a"
+        summary = catalog.summarize_scene(item, "sentinel-1", roi)
+        assert summary.cloud_available is False
+        assert summary.as_row()[2] == "—"
+
+    def test_optical_summary_still_shows_a_number(self, roi):
+        summary = catalog.summarize_scene(scene_item(), "landsat-8", roi)
+        assert summary.cloud_available is True
+        assert summary.as_row()[2] == "10.0"
 
 
 class TestCoverageRatio:
@@ -240,6 +266,7 @@ class TestBuildFetcher:
         try:
             from data_engine.io.planetary_computer_fetcher import (
                 PlanetaryComputerLandsatFetcher,
+                Sentinel1PlanetaryComputerFetcher,
                 SentinelPlanetaryComputerFetcher,
             )
         except ImportError:  # pragma: no cover - lite test environment
@@ -247,3 +274,20 @@ class TestBuildFetcher:
 
         assert PlanetaryComputerLandsatFetcher is not None
         assert issubclass(SentinelPlanetaryComputerFetcher, PlanetaryComputerLandsatFetcher)
+        assert issubclass(
+            Sentinel1PlanetaryComputerFetcher, PlanetaryComputerLandsatFetcher
+        )
+
+    def test_sentinel1_builds_the_grd_fetcher(self):
+        """``sentinel-1`` must map to the GRD fetcher, not the optical one."""
+        try:
+            from data_engine.io.planetary_computer_fetcher import (
+                Sentinel1PlanetaryComputerFetcher,
+            )
+        except ImportError:  # pragma: no cover - lite test environment
+            pytest.skip("engine download stack not installed")
+
+        fetcher = catalog.build_fetcher("sentinel-1")
+        assert isinstance(fetcher, Sentinel1PlanetaryComputerFetcher)
+        assert fetcher.collection == "sentinel-1-grd"
+        assert fetcher.bands == ["vv", "vh"]

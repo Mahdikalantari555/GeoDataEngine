@@ -9,7 +9,11 @@ from .errors import (
 )
 from .landsat_reader import LandsatReader, read_landsat_scene
 from .meteo_reader import MeteoReader, read_weather_data
-from .planetary_computer_fetcher import PlanetaryComputerLandsatFetcher
+from .planetary_computer_fetcher import (
+    PlanetaryComputerLandsatFetcher,
+    Sentinel1PlanetaryComputerFetcher,
+    SentinelPlanetaryComputerFetcher,
+)
 
 __all__ = [
     'AuthenticationError',
@@ -20,6 +24,8 @@ __all__ = [
     'NoSceneFoundError',
     'PartialDataError',
     'PlanetaryComputerLandsatFetcher',
+    'Sentinel1PlanetaryComputerFetcher',
+    'SentinelPlanetaryComputerFetcher',
     'read_landsat_scene',
     'read_weather_data',
 ]

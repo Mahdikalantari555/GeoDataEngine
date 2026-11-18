@@ -17,6 +17,11 @@
   - Cold pixel (well-watered alfalfa/crop reference) and hot pixel (dry bare agricultural soil).
 - **Sentinel-2 Processing**:
   - Scene querying, tile downloads, multi-band preprocessing, and vegetation index timeseries.
+- **Sentinel-1 Processing**:
+  - GRD scene querying and ROI-clipped downloads from the Planetary Computer.
+  - The GRD COGs carry ground control points rather than a CRS, so bands are
+    warped to UTM with a thin-plate spline. This needs the GDAL Python
+    bindings (`conda install -c conda-forge gdal`).
 
 ## Architecture
 

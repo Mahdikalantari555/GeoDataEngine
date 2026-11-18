@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .config import BASIC_INDICES, SENTINEL2, SENTINEL_ONLY_INDICES
+from .config import BASIC_INDICES, SENTINEL1, SENTINEL2, SENTINEL_ONLY_INDICES
 from .engine_loader import engine_module
 from .layout import (
     build_product_metadata,
@@ -125,7 +125,12 @@ def _read_mtl(scene_dir: Path) -> dict[str, Any]:
 
 def _satellite_from_mtl(mtl: dict[str, Any], scene_dir: Path) -> str:
     platform = str(mtl.get("platform") or "").lower()
-    if "sentinel" in platform or scene_dir.name.startswith("sentinel"):
+    name = scene_dir.name.lower()
+    # Sentinel-1 folders are prefixed sentinel1_, so they must be matched
+    # before the generic "sentinel" test below.
+    if name.startswith("sentinel1") or platform.startswith("sentinel-1"):
+        return SENTINEL1
+    if "sentinel" in platform or name.startswith("sentinel"):
         return SENTINEL2
     return platform
 
@@ -169,6 +174,10 @@ def available_indices(satellite: str) -> list[str]:
     """Indices that can be generated for a satellite."""
     if satellite == SENTINEL2:
         return list(BASIC_INDICES)
+    if satellite == SENTINEL1:
+        # GRD scenes carry polarisations, not optical bands, so none of the
+        # basic spectral indices can be computed for them.
+        return []
     return [name for name in BASIC_INDICES if name not in SENTINEL_ONLY_INDICES]
 
 
@@ -178,6 +187,11 @@ def validate_index(name: str, satellite: str) -> str:
     if upper not in INDEX_BANDS:
         raise UnsupportedIndexError(
             f"Unknown index '{name}'. Supported: {', '.join(BASIC_INDICES)}"
+        )
+    if satellite == SENTINEL1:
+        raise UnsupportedIndexError(
+            f"{upper} is not available for Sentinel-1 scenes "
+            "(GRD carries polarisations, not optical bands)"
         )
     if upper in SENTINEL_ONLY_INDICES and satellite != SENTINEL2:
         raise UnsupportedIndexError(f"{upper} is only available for Sentinel-2 scenes")

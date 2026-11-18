@@ -25,8 +25,9 @@ METADATA_DIRNAME = "metadata"
 LANDSAT8 = "landsat-8"
 LANDSAT9 = "landsat-9"
 SENTINEL2 = "sentinel-2"
+SENTINEL1 = "sentinel-1"
 
-SATELLITES: tuple[str, ...] = (LANDSAT8, LANDSAT9, SENTINEL2)
+SATELLITES: tuple[str, ...] = (LANDSAT8, LANDSAT9, SENTINEL2, SENTINEL1)
 
 #: Presets exposed in the Indices tab (mirrors ``OUTPUT_PRESETS`` in
 #: ``data_engine.config.settings`` but duplicated so the GUI never needs the
@@ -225,6 +226,7 @@ __all__ = [
     "SATELLITES",
     "SCENES_DIRNAME",
     "SENTINEL2",
+    "SENTINEL1",
     "SENTINEL_ONLY_INDICES",
     "SORT_OPTIONS",
     "AppConfig",

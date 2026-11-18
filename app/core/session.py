@@ -252,12 +252,14 @@ class Session:
         if not self.config.start_date or not self.config.end_date:
             raise ValueError("Select a start and end date before searching")
 
+        filters = [f"coverage ≥ {self.config.min_coverage_ratio:.2f}"]
+        if catalog.has_cloud_cover(self.config.satellite):
+            filters.insert(0, f"cloud ≤ {self.config.cloud_threshold:.0f}%")
         _log(
             emit,
             f"Searching {self.config.satellite} scenes between "
             f"{self.config.start_date} and {self.config.end_date} "
-            f"(cloud ≤ {self.config.cloud_threshold:.0f}%, coverage ≥ "
-            f"{self.config.min_coverage_ratio:.2f})",
+            f"({', '.join(filters)})",
         )
         items = self.bridge.search(
             self.config.satellite,

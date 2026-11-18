@@ -194,6 +194,8 @@ class TestVenvPython:
         assert venv_python(Path("C:/app/.venv")).parent.name == "Scripts"
 
 
-@pytest.mark.parametrize("name", ["landsat-8", "landsat-9", "sentinel-2"])
+@pytest.mark.parametrize(
+    "name", ["landsat-8", "landsat-9", "sentinel-2", "sentinel-1"]
+)
 def test_satellite_constants_match_config(name):
     assert name in SATELLITES

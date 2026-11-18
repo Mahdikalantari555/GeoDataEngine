@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
-from .config import LANDSAT8, LANDSAT9, SENTINEL2
+from .config import LANDSAT8, LANDSAT9, SENTINEL1, SENTINEL2
 from .engine_loader import engine_module
 from .roi import ROI, ROIError
 
@@ -38,6 +38,8 @@ class SceneSummary:
     coverage_ratio: float
     satellite: str
     geometry: dict[str, Any] | None = None
+    #: False for collections with no cloud-cover property (SAR).
+    cloud_available: bool = True
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     @property
@@ -46,10 +48,11 @@ class SceneSummary:
 
     def as_row(self) -> tuple[str, str, str, str, str, str]:
         """Values for the table columns (id, date, cloud%, platform, path, row)."""
+        cloud = f"{self.cloud_cover:.1f}" if self.cloud_available else "—"
         return (
             self.id,
             self.date,
-            f"{self.cloud_cover:.1f}",
+            cloud,
             self.platform,
             "" if self.path is None else str(self.path),
             "" if self.row is None else str(self.row),
@@ -70,7 +73,18 @@ def collection_for(satellite: str) -> str:
         return "landsat-c2-l2"
     if satellite == SENTINEL2:
         return "sentinel-2-l2a"
+    if satellite == SENTINEL1:
+        return "sentinel-1-grd"
     raise CatalogError(f"Unsupported satellite: {satellite}")
+
+
+def has_cloud_cover(satellite: str) -> bool:
+    """Whether the collection publishes a cloud-cover property.
+
+    SAR acquisitions are cloud-independent, so Sentinel-1 reports ``None`` and
+    the GUI must not show a cloud percentage for it.
+    """
+    return satellite != SENTINEL1
 
 
 def build_fetcher(
@@ -94,6 +108,10 @@ def build_fetcher(
 
     if satellite == SENTINEL2:
         return fetchers.SentinelPlanetaryComputerFetcher(max_cloud_cover=max_cloud_cover)
+    if satellite == SENTINEL1:
+        return fetchers.Sentinel1PlanetaryComputerFetcher(
+            max_cloud_cover=max_cloud_cover, source_crs=source_crs
+        )
     return fetchers.PlanetaryComputerLandsatFetcher(
         collection=collection_for(satellite),
         max_cloud_cover=max_cloud_cover,
@@ -159,6 +177,7 @@ def summarize_scene(
         coverage_ratio=ratio,
         satellite=satellite,
         geometry=geometry,
+        cloud_available=has_cloud_cover(satellite),
         raw=item,
     )
 
@@ -235,6 +254,7 @@ __all__ = [
     "coverage_ratio",
     "distance_to_full_coverage",
     "filter_by_coverage",
+    "has_cloud_cover",
     "search_scenes",
     "sort_scenes",
     "summarize_scene",

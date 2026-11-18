@@ -21,7 +21,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
-from ..core import catalog
+from ..core import catalog, indices
 from ..core.bootstrap import Bootstrapper
 from ..core.config import (
     BASIC_INDICES,
@@ -763,11 +763,11 @@ class DesktopApp:
         """Grey out indices the selected satellite cannot produce."""
         satellite = self.session.config.satellite
         full = self.session.full_mode_enabled()
-        # Sentinel-only indices are greyed out for other satellites.
+        # Sentinel-1 scenes carry polarisations rather than optical bands, so
+        # available_indices() is empty and every checkbox is disabled.
+        allowed = set(indices.available_indices(satellite))
         for name, check in self.index_checks.items():
-            if name not in SENTINEL_ONLY_INDICES:
-                continue
-            available = satellite == SENTINEL2
+            available = name in allowed
             with contextlib.suppress(Exception):
                 check.configure(state="normal" if available else "disabled")
             if not available and self.index_vars[name].get():

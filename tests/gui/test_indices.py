@@ -34,6 +34,25 @@ class TestAvailability:
     def test_sentinel_supports_optram(self):
         assert "OPTRAM" in available_indices("sentinel-2")
 
+    def test_sentinel1_has_no_spectral_indices(self):
+        """GRD scenes carry polarisations, so none of the optical indices apply."""
+        assert available_indices("sentinel-1") == []
+
+    def test_every_index_is_rejected_for_sentinel1(self):
+        for name in ("NDVI", "EVI", "SAVI", "NDWI", "OPTRAM"):
+            with pytest.raises(UnsupportedIndexError, match="Sentinel-1"):
+                validate_index(name, "sentinel-1")
+
+    def test_sentinel1_scene_is_classified_correctly(self, tmp_path):
+        """A sentinel1_ folder must not be mistaken for Sentinel-2."""
+        scene_dir = tmp_path / "sentinel1_20240101_asc"
+        scene_dir.mkdir()
+        (scene_dir / "vv.tif").touch()
+        (scene_dir / "MTL.json").write_text(
+            json.dumps({"item_id": "S1A_IW_GRDH_1SDV", "platform": "sentinel-1a"})
+        )
+        assert scene_from_directory(scene_dir).satellite == "sentinel-1"
+
     def test_validate_index_normalizes_case(self):
         assert validate_index("ndvi", "landsat-8") == "NDVI"
 

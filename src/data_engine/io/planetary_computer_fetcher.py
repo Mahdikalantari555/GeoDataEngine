@@ -151,6 +151,11 @@ class PlanetaryComputerLandsatFetcher:
     # Planetary Computer STAC endpoint
     STAC_API_URL = "https://planetarycomputer.microsoft.com/api/stac/v1"
 
+    #: Band names accepted by this fetcher.  Subclasses whose assets do not use
+    #: the Landsat scheme (Sentinel-2, Sentinel-1) override this; the parent's
+    #: ``__init__`` validates against it so each class only accepts its own.
+    BAND_MAPPING = MPC_BAND_MAPPING
+
     def __init__(
         self,
         collection: str = "landsat-c2-l2",
@@ -177,10 +182,10 @@ class PlanetaryComputerLandsatFetcher:
         self.cache_dir = Path(cache_dir) if cache_dir else None
         self.use_cache = use_cache
 
-        # Validate bands
+        # Validate bands against this class's own asset scheme.
         for band in self.bands:
-            if band not in MPC_BAND_MAPPING:
-                raise ValueError(f"Unknown band: {band}. Supported bands: {list(MPC_BAND_MAPPING.keys())}")
+            if band not in self.BAND_MAPPING:
+                raise ValueError(f"Unknown band: {band}. Supported bands: {list(self.BAND_MAPPING.keys())}")
 
         # Initialize STAC client
         try:
@@ -921,6 +926,9 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
         'scl': 'SCL',
     }
 
+    #: Sentinel-2 validates against its own asset names, not the Landsat ones.
+    BAND_MAPPING = SENTINEL_BAND_MAPPING
+
     def __init__(
         self,
         collection: str = "sentinel-2-l2a",
@@ -1263,5 +1271,441 @@ class SentinelPlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
             raise NoSceneFoundError(
                 f"No Sentinel-2 scenes with sufficient coverage. "
                 f"Tried {len(full_coverage_items)} scene(s)."
+            )
+        return results
+
+
+# ---------------------------------------------------------------------------
+# Sentinel-1
+# ---------------------------------------------------------------------------
+
+#: Sentinel-1 GRD polarisations, expressed as their STAC asset keys.
+SENTINEL1_POLARIZATIONS: tuple[str, ...] = ("vv", "vh", "hh", "hv")
+
+#: Zero is the GRD nodata marker in the Planetary Computer COGs.
+SENTINEL1_NODATA: float = 0.0
+
+
+def _configure_gdal_http():
+    """Return GDAL with the options that make signed ``/vsicurl/`` URLs work.
+
+    Without ``GDAL_DISABLE_READDIR_ON_OPEN`` GDAL tries to list the blob
+    container over HTTP before opening the object, which stalls on the
+    Planetary Computer endpoints.  ``CPL_VSIL_CURL_ALLOWED_EXTENSIONS`` keeps
+    it from probing the sibling assets.
+    """
+    try:
+        from osgeo import gdal
+    except ImportError as exc:
+        raise DownloadError(
+            "Sentinel-1 clipping needs the GDAL Python bindings. "
+            "Install them with: conda install -c conda-forge gdal"
+        ) from exc
+
+    for key, value in {
+        "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
+        "CPL_VSIL_CURL_ALLOWED_EXTENSIONS": ".tif,.tiff",
+        "CPL_VSIL_CURL_USE_HEAD": "NO",
+        "GDAL_HTTP_TIMEOUT": "60",
+        "GDAL_HTTP_CONNECTTIMEOUT": "20",
+    }.items():
+        gdal.SetConfigOption(key, value)
+    # Raise instead of returning None, so a failed warp is reported as a
+    # Python exception rather than silently producing nothing.
+    gdal.UseExceptions()
+    return gdal
+
+
+class Sentinel1PlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
+    """Fetcher for Sentinel-1 GRD scenes from the Planetary Computer.
+
+    Three properties of ``sentinel-1-grd`` force a different implementation
+    from the optical fetchers:
+
+    * **No cloud cover.** GRD items have no ``eo:cloud_cover``, so the cloud
+      filter inherited from the parent is a no-op and the results report
+      ``None`` rather than a fabricated 0 %.
+    * **No georeferencing in the COG.** The measurement GeoTIFFs are written
+      with an identity transform and no CRS; they carry a grid of ground
+      control points instead.  Clipping therefore goes through GDAL, which
+      warps that GCP grid with a thin-plate spline.  A global affine fit of the
+      GCPs is *not* good enough — the ground-range grid is curved and an affine
+      fit leaves roughly 2 km of error at the scene edges.
+    * **Polarisations, not spectral bands.** The usable assets are ``vv`` /
+      ``vh`` (or ``hh`` / ``hv`` depending on the acquisition mode).
+
+    Args:
+        collection: STAC collection id.
+        bands: Polarisation asset keys to download.  Defaults to whatever the
+            scene offers from :attr:`DEFAULT_POLARIZATIONS`.
+        max_cloud_cover: Accepted for interface compatibility only; ignored.
+        source_crs: CRS of the input ROI geometry.
+        instrument_mode: Optional acquisition-mode filter (e.g. ``"IW"``).
+        orbit_direction: Optional ``"ascending"`` / ``"descending"`` filter.
+        resolution: Output pixel size in metres.
+    """
+
+    BAND_MAPPING = {pol: pol for pol in SENTINEL1_POLARIZATIONS}
+
+    #: Preferred polarisations for an interferometric wide-swath scene.
+    DEFAULT_POLARIZATIONS: tuple[str, ...] = ("vv", "vh")
+
+    def __init__(
+        self,
+        collection: str = "sentinel-1-grd",
+        bands: list[str] | None = None,
+        max_cloud_cover: float = 70.0,
+        source_crs: str = "EPSG:4326",
+        instrument_mode: str | None = None,
+        orbit_direction: str | None = None,
+        resolution: float = 10.0,
+    ) -> None:
+        self.instrument_mode = instrument_mode or None
+        self.orbit_direction = orbit_direction or None
+        self.resolution = float(resolution)
+        super().__init__(
+            collection=collection,
+            bands=list(bands) if bands else list(self.DEFAULT_POLARIZATIONS),
+            max_cloud_cover=max_cloud_cover,
+            source_crs=source_crs,
+        )
+
+    # -- search --------------------------------------------------------
+    def search_scenes(
+        self,
+        roi_geometry: dict | BaseGeometry,
+        date_range: tuple[str | datetime, str | datetime],
+    ) -> list[dict]:
+        """Search GRD scenes, skipping the cloud filter and adding SAR fields.
+
+        Returns:
+            One dict per item with ``id``, ``datetime``, ``cloud_cover`` (always
+            ``None``), ``platform``, ``bbox``, ``geometry`` and the SAR
+            descriptors ``polarizations``, ``instrument_mode``, ``orbit_state``
+            and ``relative_orbit``.
+        """
+        roi_geometry = self._normalize_geometry(roi_geometry)
+        start_date, end_date = self._normalize_dates(date_range)
+        search_params = {
+            "collections": [self.collection],
+            "bbox": list(roi_geometry.bounds),
+            "datetime": f"{start_date.isoformat()}/{end_date.isoformat()}",
+            "limit": 100,
+        }
+        try:
+            items = list(self.client.search(**search_params).items())
+        except Exception as exc:
+            logger.error(f"STAC search failed: {exc}")
+            raise AuthenticationError(f"STAC search failed: {exc}") from exc
+
+        results = []
+        for item in items:
+            props = item.properties
+            mode = props.get("sar:instrument_mode")
+            orbit = props.get("sat:orbit_state")
+            if self.instrument_mode and mode != self.instrument_mode:
+                continue
+            if self.orbit_direction and orbit != self.orbit_direction:
+                continue
+            results.append(
+                {
+                    "id": item.id,
+                    "datetime": item.datetime,
+                    # Sentinel-1 has no cloud-cover property at all.
+                    "cloud_cover": None,
+                    "platform": props.get("platform")
+                    or props.get("constellation", "sentinel-1"),
+                    "bbox": item.bbox,
+                    "geometry": item.geometry,
+                    "polarizations": [
+                        str(pol).lower() for pol in props.get("sar:polarizations", [])
+                    ],
+                    "instrument_mode": mode,
+                    "orbit_state": orbit,
+                    "relative_orbit": props.get("sat:relative_orbit"),
+                }
+            )
+        return results
+
+    # -- download ------------------------------------------------------
+    def download_and_clip_bands(
+        self,
+        item,
+        bbox: list[float],
+        output_dir: Path,
+        resolution: float = 10.0,
+        min_coverage_ratio: float = 0.55,
+    ) -> dict[str, Path]:
+        """Warp each polarisation to UTM, clipped to ``bbox``.
+
+        Writes ``<polarisation>.tif`` (for example ``vv.tif``) so the scene
+        folder reads the same way as an optical one.
+        """
+        gdal = _configure_gdal_http()
+
+        try:
+            import planetary_computer
+
+            signed_item = planetary_computer.sign(item)
+        except Exception as exc:
+            raise AuthenticationError(
+                f"MPC authentication failed for item {item.id}: {exc}"
+            ) from exc
+
+        asset_keys = [pol for pol in self.bands if pol in signed_item.assets]
+        if not asset_keys:
+            raise DownloadError(
+                f"No required bands found in Sentinel-1 item {item.id}. "
+                f"Available assets: {list(signed_item.assets.keys())}"
+            )
+
+        utm_epsg = self._get_utm_epsg(bbox)
+        out_crs = f"EPSG:{utm_epsg}"
+        transformer = Transformer.from_crs("EPSG:4326", out_crs, always_xy=True)
+        min_x, min_y = transformer.transform(bbox[0], bbox[1])
+        max_x, max_y = transformer.transform(bbox[2], bbox[3])
+        utm_bounds = (min_x, min_y, max_x, max_y)
+
+        size = float(resolution or self.resolution)
+        downloaded: dict[str, Path] = {}
+        for asset_key in asset_keys:
+            out_path = output_dir / f"{asset_key}.tif"
+            try:
+                logger.info(
+                    f"Downloading Sentinel-1 {asset_key} from "
+                    f"{signed_item.assets[asset_key].href[:80]}..."
+                )
+                gdal.Warp(
+                    str(out_path),
+                    f"/vsicurl/{signed_item.assets[asset_key].href}",
+                    dstSRS=out_crs,
+                    outputBounds=utm_bounds,
+                    xRes=size,
+                    yRes=size,
+                    resampleAlg="near",
+                    dstNodata=SENTINEL1_NODATA,
+                    # TPS is what makes the GCP geolocation usable; see class docs.
+                    tps=True,
+                    creationOptions=["COMPRESS=LZW", "TILED=YES"],
+                )
+            except Exception as exc:
+                logger.warning(f"Failed to download band {asset_key}: {exc}")
+                out_path.unlink(missing_ok=True)
+                continue
+
+            if out_path.is_file() and out_path.stat().st_size > 0:
+                downloaded[asset_key] = out_path
+                logger.info(f"Saved Sentinel-1 band {asset_key} -> {out_path}")
+            else:
+                logger.warning(f"Sentinel-1 band {asset_key} produced an empty raster")
+                out_path.unlink(missing_ok=True)
+
+        if not downloaded:
+            raise DownloadError(f"No bands could be downloaded for {item.id}")
+
+        self._check_coverage(list(downloaded.values())[0], item.id, min_coverage_ratio)
+        return downloaded
+
+    def _check_coverage(
+        self, band_path: Path, item_id: str, min_coverage_ratio: float
+    ) -> None:
+        """Drop a scene whose clipped pixels are mostly nodata."""
+        try:
+            with rasterio.open(band_path) as src:
+                data = src.read(1)
+        except Exception as exc:
+            logger.warning(f"Could not read {band_path.name} for coverage check: {exc}")
+            return
+
+        nodata = SENTINEL1_NODATA
+        valid = (data != nodata) & (data > 0)
+        total = valid.size
+        if total == 0:
+            return
+        ratio = float(np.count_nonzero(valid)) / total
+        logger.info(
+            f"Valid coverage for {item_id}: {ratio:.3f} "
+            f"({int(np.count_nonzero(valid))}/{total} pixels)"
+        )
+        if ratio < min_coverage_ratio:
+            band_path.unlink(missing_ok=True)
+            raise DownloadError(
+                f"Scene {item_id} coverage {ratio:.1%} "
+                f"< {min_coverage_ratio:.1%}"
+            )
+
+    # -- scene folders -------------------------------------------------
+    def _scene_dirname(self, item) -> str:
+        """``sentinel1_<date>_<asc|desc>`` — one folder per acquisition pass.
+
+        Sentinel-1 can be acquired twice a day (ascending and descending), so a
+        date-only name would collide.
+        """
+        scene_date = item.datetime.strftime("%Y%m%d") if item.datetime else "unknown"
+        orbit = str(item.properties.get("sat:orbit_state", "")).lower()
+        tag = {"ascending": "asc", "descending": "desc"}.get(orbit, orbit[:3])
+        return f"sentinel1_{scene_date}_{tag}".rstrip("_")
+
+    def _find_existing_scene(self, scene_dir: Path) -> tuple[dict[str, Path], Path] | None:
+        """A scene counts as done when it has metadata and any polarisation.
+
+        The polarisation set varies with acquisition mode, so the parent's
+        per-band completeness check does not apply.
+        """
+        if not scene_dir.is_dir():
+            return None
+        mtl_candidates = list(scene_dir.glob("MTL*.json")) + list(scene_dir.glob("*.json"))
+        if not mtl_candidates:
+            return None
+        bands = {
+            path.stem: path
+            for path in sorted(scene_dir.glob("*.tif"))
+            if path.stem.lower() in self.BAND_MAPPING
+        }
+        if not bands:
+            return None
+        return bands, mtl_candidates[0]
+
+    # -- metadata ------------------------------------------------------
+    def _create_mtl_metadata(self, item, output_dir: Path) -> Path:
+        """Write an ``MTL.json`` describing the Sentinel-1 acquisition."""
+        props = item.properties
+        scene_id = item.id
+        scene_date = props.get("datetime", "")[:10]
+        pols = [str(pol).lower() for pol in props.get("sar:polarizations", [])]
+
+        mtl_data = {
+            "item_id": scene_id,
+            "datetime": scene_date,
+            "platform": props.get("platform", "sentinel-1"),
+            "constellation": props.get("constellation", "Sentinel-1"),
+            "sensor": "SAR-C",
+            "processing_level": f"L{props.get('s1:processing_level', '1')} GRD",
+            "product_identifier": props.get("s1:product_identifier"),
+            "polarizations": pols,
+            "instrument_mode": props.get("sar:instrument_mode"),
+            "orbit_state": props.get("sat:orbit_state"),
+            "relative_orbit": props.get("sat:relative_orbit"),
+            "absolute_orbit": props.get("sat:absolute_orbit"),
+            "resolution": props.get("s1:resolution"),
+            "pixel_spacing": props.get("sar:pixel_spacing_range"),
+            "looks": {
+                "range": props.get("sar:looks_range"),
+                "azimuth": props.get("sar:looks_azimuth"),
+            },
+            "bbox": item.bbox,
+            "geometry": item.geometry,
+            "collection": item.collection_id,
+            "properties": props,
+            "assets": list(item.assets.keys()),
+            "geolocation": {
+                "method": "gdal-tps",
+                "note": (
+                    "GRD COGs carry ground control points instead of a CRS; "
+                    "bands were warped from those GCPs with a thin-plate spline."
+                ),
+            },
+        }
+        mtl_data["METADATA"] = {
+            "PRODUCT_METADATA": {
+                "PRODUCT_ID": scene_id,
+                "ACQUISITION_DATE": scene_date,
+                "PLATFORM": props.get("platform", "sentinel-1"),
+                "PROCESSING_LEVEL": "GRD",
+                "INSTRUMENT_MODE": props.get("sar:instrument_mode"),
+                "ORBIT_STATE": props.get("sat:orbit_state"),
+            }
+        }
+
+        mtl_path = output_dir / "MTL.json"
+        with open(mtl_path, "w") as handle:
+            json.dump(mtl_data, handle, indent=2, default=str)
+        logger.info(f"Created Sentinel-1 MTL.json at {mtl_path}")
+        return mtl_path
+
+    # -- orchestration -------------------------------------------------
+    def fetch_scenes(
+        self,
+        roi_geometry: dict | BaseGeometry,
+        date_range: tuple[str | datetime, str | datetime],
+        output_dir: str,
+        min_cloud_cover: float = 0.0,
+        resolution: float = 10.0,
+        sort_by: str = "date",
+        min_coverage_ratio: float = 0.55,
+        selected_ids: list[str] | None = None,
+    ) -> list[dict]:
+        """Search, then download every selected GRD scene clipped to the ROI."""
+        roi_geometry = self._normalize_geometry(roi_geometry)
+        roi_bbox = list(roi_geometry.bounds)
+        start_date, end_date = self._normalize_dates(date_range)
+
+        output_path = Path(output_dir)
+        output_path.mkdir(parents=True, exist_ok=True)
+
+        items = self._search_scenes_by_bbox(
+            roi_bbox, start_date, end_date, min_cloud_cover
+        )
+        candidates = self._filter_full_coverage(roi_bbox, items)
+        if not candidates:
+            raise NoSceneFoundError("No Sentinel-1 scenes found with full ROI coverage")
+
+        # Sentinel-1 has no cloud cover, so both sort keys collapse to date.
+        candidates.sort(key=lambda it: it.datetime)
+        logger.info(f"Found {len(candidates)} qualifying Sentinel-1 scenes")
+
+        if selected_ids is not None:
+            wanted = {str(sid) for sid in selected_ids}
+            candidates = [item for item in candidates if str(item.id) in wanted]
+            if not candidates:
+                logger.info(
+                    "None of the selected scenes matched the catalog; "
+                    "nothing to download"
+                )
+                return []
+
+        results: list[dict] = []
+        for item in candidates:
+            scene_dir = output_path / self._scene_dirname(item)
+            scene_dir.mkdir(parents=True, exist_ok=True)
+
+            existing = self._find_existing_scene(scene_dir)
+            if existing is not None:
+                downloaded_files, mtl_path = existing
+                logger.info(f"Scene {item.id} already downloaded, skipping: {scene_dir}")
+            else:
+                try:
+                    downloaded_files = self.download_and_clip_bands(
+                        item,
+                        roi_bbox,
+                        scene_dir,
+                        resolution or self.resolution,
+                        min_coverage_ratio,
+                    )
+                except DownloadError as exc:
+                    logger.warning(f"Skipping scene {item.id}: {exc}")
+                    for stale in scene_dir.glob("*.tif"):
+                        stale.unlink(missing_ok=True)
+                    continue
+                mtl_path = self._create_mtl_metadata(item, scene_dir)
+
+            results.append(
+                {
+                    "scene_id": item.id,
+                    "date": item.datetime.strftime("%Y-%m-%d") if item.datetime else "",
+                    "orbit_state": item.properties.get("sat:orbit_state"),
+                    "relative_orbit": item.properties.get("sat:relative_orbit"),
+                    "polarizations": list(downloaded_files),
+                    "directory": str(scene_dir),
+                    "bands_downloaded": len(downloaded_files),
+                    "mtl_file": str(mtl_path),
+                    "band_files": downloaded_files,
+                }
+            )
+
+        if not results:
+            raise NoSceneFoundError(
+                "No Sentinel-1 scenes with sufficient coverage. "
+                f"Tried {len(candidates)} scene(s)."
             )
         return results

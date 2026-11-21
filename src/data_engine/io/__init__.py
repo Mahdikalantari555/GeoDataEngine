@@ -12,6 +12,7 @@ from .meteo_reader import MeteoReader, read_weather_data
 from .planetary_computer_fetcher import (
     PlanetaryComputerLandsatFetcher,
     Sentinel1PlanetaryComputerFetcher,
+    Sentinel1RtcPlanetaryComputerFetcher,
     SentinelPlanetaryComputerFetcher,
 )
 
@@ -25,6 +26,7 @@ __all__ = [
     'PartialDataError',
     'PlanetaryComputerLandsatFetcher',
     'Sentinel1PlanetaryComputerFetcher',
+    'Sentinel1RtcPlanetaryComputerFetcher',
     'SentinelPlanetaryComputerFetcher',
     'read_landsat_scene',
     'read_weather_data',

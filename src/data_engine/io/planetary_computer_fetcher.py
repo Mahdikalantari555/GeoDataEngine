@@ -1285,6 +1285,10 @@ SENTINEL1_POLARIZATIONS: tuple[str, ...] = ("vv", "vh", "hh", "hv")
 #: Zero is the GRD nodata marker in the Planetary Computer COGs.
 SENTINEL1_NODATA: float = 0.0
 
+#: The sentinel-1-rtc measurement rasters are float32 gamma-0 with -32768
+#: as the provider's nodata marker (see the ``raster:bands`` asset field).
+SENTINEL1_RTC_NODATA: float = -32768.0
+
 
 def _configure_gdal_http():
     """Return GDAL with the options that make signed ``/vsicurl/`` URLs work.
@@ -1709,3 +1713,166 @@ class Sentinel1PlanetaryComputerFetcher(PlanetaryComputerLandsatFetcher):
                 f"Tried {len(candidates)} scene(s)."
             )
         return results
+
+
+class Sentinel1RtcPlanetaryComputerFetcher(Sentinel1PlanetaryComputerFetcher):
+    """Fetcher for radiometric terrain-corrected Sentinel-1 (``sentinel-1-rtc``).
+
+    The ``sentinel-1-rtc`` collection serves the *same* GRD acquisitions as
+    ``sentinel-1-grd`` (item ids carry an ``_rtc`` suffix) but processed to
+    RTC gamma-0 with the Copernicus DEM GLO-30 and map-projected to UTM.
+
+    Why it matters: plain GRD geolocation comes from a sparse GCP grid under a
+    zero-height ellipsoid model, so in mountainous terrain the image wanders
+    per orbit direction relative to optical scenes.  Over the Zarivar ROI the
+    GRD-vs-S2 shift measured 460-530 m for ascending passes (relative orbit
+    174) and 420 m for descending (relative orbit 79), while the RTC twin of
+    the same scene aligns with Sentinel-2 within about one 10 m pixel.
+
+    Consequences for the implementation:
+
+    * The RTC COGs carry a real CRS (``proj:code``) and no GCP grid, so the
+      clip is a plain windowed reprojection — the TPS/GCP warp of the GRD
+      path is neither needed nor applicable.
+    * The measurement rasters are float32 *linear gamma-0* with -32768 as the
+      provider nodata (:data:`SENTINEL1_RTC_NODATA`); the written bands keep
+      that scale and use 0 as the on-disk nodata marker like the GRD bands.
+
+    Search, scene folder names, coverage checks and ``fetch_scenes`` behave
+    exactly as in :class:`Sentinel1PlanetaryComputerFetcher` because the RTC
+    items carry the same ``sar:`` / ``sat:`` properties.
+    """
+
+    def __init__(
+        self,
+        collection: str = "sentinel-1-rtc",
+        bands: list[str] | None = None,
+        max_cloud_cover: float = 70.0,
+        source_crs: str = "EPSG:4326",
+        instrument_mode: str | None = None,
+        orbit_direction: str | None = None,
+        resolution: float = 10.0,
+    ) -> None:
+        super().__init__(
+            collection=collection,
+            bands=bands,
+            max_cloud_cover=max_cloud_cover,
+            source_crs=source_crs,
+            instrument_mode=instrument_mode,
+            orbit_direction=orbit_direction,
+            resolution=resolution,
+        )
+
+    # -- download ------------------------------------------------------
+    def download_and_clip_bands(
+        self,
+        item,
+        bbox: list[float],
+        output_dir: Path,
+        resolution: float = 10.0,
+        min_coverage_ratio: float = 0.55,
+    ) -> dict[str, Path]:
+        """Windowed-clip each polarisation to ``bbox`` — no GCP warp.
+
+        Writes ``<polarisation>.tif`` (float32 linear gamma-0) so the scene
+        folder reads the same way as a GRD/optical one.
+        """
+        gdal = _configure_gdal_http()
+
+        try:
+            import planetary_computer
+
+            signed_item = planetary_computer.sign(item)
+        except Exception as exc:
+            raise AuthenticationError(
+                f"MPC authentication failed for item {item.id}: {exc}"
+            ) from exc
+
+        asset_keys = [pol for pol in self.bands if pol in signed_item.assets]
+        if not asset_keys:
+            raise DownloadError(
+                f"No required bands found in Sentinel-1 RTC item {item.id}. "
+                f"Available assets: {list(signed_item.assets.keys())}"
+            )
+
+        utm_epsg = self._get_utm_epsg(bbox)
+        out_crs = f"EPSG:{utm_epsg}"
+        transformer = Transformer.from_crs("EPSG:4326", out_crs, always_xy=True)
+        min_x, min_y = transformer.transform(bbox[0], bbox[1])
+        max_x, max_y = transformer.transform(bbox[2], bbox[3])
+        utm_bounds = (min_x, min_y, max_x, max_y)
+
+        size = float(resolution or self.resolution)
+        downloaded: dict[str, Path] = {}
+        for asset_key in asset_keys:
+            out_path = output_dir / f"{asset_key}.tif"
+            try:
+                logger.info(
+                    f"Downloading Sentinel-1 RTC {asset_key} from "
+                    f"{signed_item.assets[asset_key].href[:80]}..."
+                )
+                gdal.Warp(
+                    str(out_path),
+                    f"/vsicurl/{signed_item.assets[asset_key].href}",
+                    dstSRS=out_crs,
+                    outputBounds=utm_bounds,
+                    xRes=size,
+                    yRes=size,
+                    resampleAlg="near",
+                    srcNodata=SENTINEL1_RTC_NODATA,
+                    dstNodata=SENTINEL1_NODATA,
+                    # RTC COGs are already terrain corrected and projected;
+                    # this is a plain reprojection, not a GCP geolocation.
+                    creationOptions=["COMPRESS=LZW", "TILED=YES"],
+                )
+            except Exception as exc:
+                logger.warning(f"Failed to download band {asset_key}: {exc}")
+                out_path.unlink(missing_ok=True)
+                continue
+
+            if out_path.is_file() and out_path.stat().st_size > 0:
+                downloaded[asset_key] = out_path
+                logger.info(f"Saved Sentinel-1 RTC band {asset_key} -> {out_path}")
+            else:
+                logger.warning(f"Sentinel-1 RTC band {asset_key} produced an empty raster")
+                out_path.unlink(missing_ok=True)
+
+        if not downloaded:
+            raise DownloadError(f"No bands could be downloaded for {item.id}")
+
+        self._check_coverage(list(downloaded.values())[0], item.id, min_coverage_ratio)
+        return downloaded
+
+    # -- metadata ------------------------------------------------------
+    def _create_mtl_metadata(self, item, output_dir: Path) -> Path:
+        """Write ``MTL.json`` for an RTC scene (parent fields + RTC specifics)."""
+        mtl_path = super()._create_mtl_metadata(item, output_dir)
+        with open(mtl_path) as handle:
+            mtl = json.load(handle)
+
+        mtl["processing_level"] = "L1 GRD (RTC gamma-0)"
+        # RTC items lack s1:product_identifier; fall back to the item id.
+        mtl["product_identifier"] = (
+            item.properties.get("s1:product_identifier") or item.id
+        )
+        mtl["radiometry"] = {
+            "measure": "gamma0",
+            "scale": "linear power",
+            "provider_nodata": SENTINEL1_RTC_NODATA,
+            "output_nodata": SENTINEL1_NODATA,
+        }
+        mtl["geolocation"] = {
+            "method": "provider-rtc",
+            "dem": "Copernicus DEM GLO-30",
+            "note": (
+                "Bands come from the sentinel-1-rtc collection, already "
+                "radiometric terrain corrected and map-projected; the clip "
+                "is a plain reprojection with no GCP involvement."
+            ),
+        }
+        mtl["METADATA"]["PRODUCT_METADATA"]["PROCESSING_LEVEL"] = "RTC gamma-0"
+
+        with open(mtl_path, "w") as handle:
+            json.dump(mtl, handle, indent=2, default=str)
+        logger.info(f"Updated MTL.json with RTC fields at {mtl_path}")
+        return mtl_path

@@ -677,6 +677,157 @@ class TestSentinel1PlanetaryComputerFetcher:
         assert results[0]["polarizations"] == ["vv", "vh"]
 
 
+class TestSentinel1RtcPlanetaryComputerFetcher:
+    """Tests for the terrain-corrected (``sentinel-1-rtc``) S1 fetcher."""
+
+    def _rtc_item(self):
+        """Helper: mock a Sentinel-1 RTC STAC item (no s1:product_identifier)."""
+        item = Mock()
+        item.id = "S1A_IW_GRDH_1SDV_20240101T000000_057296_070CA3_rtc"
+        item.datetime = datetime(2024, 1, 1, 0, 0, 0)
+        item.bbox = [48.0, 31.0, 48.5, 31.5]
+        item.collection_id = "sentinel-1-rtc"
+        item.geometry = {
+            "type": "Polygon",
+            "coordinates": [
+                [[48.0, 31.0], [48.5, 31.0], [48.5, 31.5], [48.0, 31.5], [48.0, 31.0]]
+            ],
+        }
+        item.assets = {
+            "vv": Mock(href="https://example.invalid/vv_rtc.tif"),
+            "vh": Mock(href="https://example.invalid/vh_rtc.tif"),
+        }
+        item.properties = {
+            "datetime": "2024-01-01T00:00:00Z",
+            "platform": "SENTINEL-1A",
+            "constellation": "Sentinel-1",
+            "sar:instrument_mode": "IW",
+            "sat:orbit_state": "ascending",
+            "sat:relative_orbit": 72,
+            "sar:polarizations": ["VV", "VH"],
+            "s1:processing_level": "1",
+        }
+        return item
+
+    def test_init_default(self):
+        """Defaults target the RTC collection and the VV/VH polarisations."""
+        from data_engine.io.planetary_computer_fetcher import (
+            Sentinel1RtcPlanetaryComputerFetcher,
+        )
+
+        fetcher = Sentinel1RtcPlanetaryComputerFetcher()
+        assert fetcher.collection == "sentinel-1-rtc"
+        assert fetcher.bands == ["vv", "vh"]
+        assert fetcher.resolution == 10.0
+
+    def test_init_rejects_unknown_polarisation(self):
+        """RTC uses the same polarisation asset keys as GRD."""
+        from data_engine.io.planetary_computer_fetcher import (
+            Sentinel1RtcPlanetaryComputerFetcher,
+        )
+
+        with pytest.raises(ValueError, match="Unknown band"):
+            Sentinel1RtcPlanetaryComputerFetcher(bands=["blue"])
+
+    @patch("data_engine.io.planetary_computer_fetcher._configure_gdal_http")
+    @patch("planetary_computer.sign")
+    def test_download_clip_bands_is_a_plain_warp(self, mock_sign, mock_gdal, tmp_path):
+        """RTC clips are plain reprojections: no TPS, provider nodata honoured."""
+        from data_engine.io.planetary_computer_fetcher import (
+            SENTINEL1_NODATA,
+            SENTINEL1_RTC_NODATA,
+            Sentinel1RtcPlanetaryComputerFetcher,
+        )
+
+        calls = []
+
+        def fake_warp(dest, source, **kwargs):
+            calls.append({"dest": dest, "source": source, **kwargs})
+            import numpy as np
+            import rasterio
+
+            with rasterio.open(
+                dest,
+                "w",
+                driver="GTiff",
+                height=4,
+                width=4,
+                count=1,
+                dtype="float32",
+                crs=kwargs["dstSRS"],
+                transform=rasterio.Affine(10, 0, 0, 0, -10, 0),
+                nodata=0,
+            ) as dst:
+                dst.write(np.full((4, 4), 0.1, dtype="float32"), 1)
+
+        gdal = Mock()
+        gdal.Warp.side_effect = fake_warp
+        mock_gdal.return_value = gdal
+
+        item = self._rtc_item()
+        mock_sign.return_value = item
+        fetcher = Sentinel1RtcPlanetaryComputerFetcher()
+
+        files = fetcher.download_and_clip_bands(
+            item, [48.0, 31.0, 48.5, 31.5], tmp_path, 10.0
+        )
+
+        assert sorted(files) == ["vh", "vv"]
+        assert all(path.name.endswith(".tif") for path in files.values())
+        # ROI centred at 48.25E falls in UTM zone 39N.
+        assert calls[0]["dstSRS"] == "EPSG:32639"
+        # No GCP grid involved — the plain-warp contract.
+        assert "tps" not in calls[0]
+        assert calls[0]["srcNodata"] == SENTINEL1_RTC_NODATA
+        assert calls[0]["dstNodata"] == SENTINEL1_NODATA
+        assert calls[0]["source"].startswith("/vsicurl/")
+
+    def test_create_mtl_metadata_records_rtc_fields(self, tmp_path):
+        """MTL.json marks the RTC radiometry and provider-RTC geolocation."""
+        from data_engine.io.planetary_computer_fetcher import (
+            Sentinel1RtcPlanetaryComputerFetcher,
+        )
+
+        fetcher = Sentinel1RtcPlanetaryComputerFetcher()
+        item = self._rtc_item()
+        mtl_path = fetcher._create_mtl_metadata(item, tmp_path)
+
+        payload = json.loads(mtl_path.read_text())
+        assert payload["item_id"] == item.id
+        # RTC items carry no s1:product_identifier — the item id is the fallback.
+        assert payload["product_identifier"] == item.id
+        assert payload["processing_level"] == "L1 GRD (RTC gamma-0)"
+        assert payload["radiometry"]["measure"] == "gamma0"
+        assert payload["radiometry"]["scale"] == "linear power"
+        assert payload["geolocation"]["method"] == "provider-rtc"
+        assert payload["geolocation"]["dem"] == "Copernicus DEM GLO-30"
+        assert payload["METADATA"]["PRODUCT_METADATA"]["PROCESSING_LEVEL"] == "RTC gamma-0"
+
+    def test_fetch_scenes_uses_sentinel1_folder_names(self, tmp_path):
+        """Scene folders stay ``sentinel1_<date>_<orbit>`` like the GRD ones."""
+        from data_engine.io.planetary_computer_fetcher import (
+            Sentinel1RtcPlanetaryComputerFetcher,
+        )
+
+        fetcher = Sentinel1RtcPlanetaryComputerFetcher()
+        item = self._rtc_item()
+        fake_files = {"vv": tmp_path / "vv.tif", "vh": tmp_path / "vh.tif"}
+
+        with patch.object(fetcher, "_search_scenes_by_bbox", return_value=[item]), patch.object(
+            fetcher, "download_and_clip_bands", return_value=fake_files
+        ), patch.object(
+            fetcher, "_create_mtl_metadata", return_value=tmp_path / "MTL.json"
+        ):
+            results = fetcher.fetch_scenes(
+                box(48.0, 31.0, 48.5, 31.5),
+                ("2024-01-01", "2024-01-02"),
+                str(tmp_path),
+            )
+
+        assert len(results) == 1
+        assert Path(results[0]["directory"]).name == "sentinel1_20240101_asc"
+
+
 class TestErrorClasses:
     """Test suite for custom error classes."""
     
